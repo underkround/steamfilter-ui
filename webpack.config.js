@@ -59,30 +59,28 @@ const parts = {
 	styles: TARGET_ENV === PRODUCTION
 		? {
 			module: {
-				rules: [
-					{
-						test: /\.(css|scss)$/,
-						use: ExtractTextPlugin.extract({
-							fallback: "style-loader",
-							use: [
-								{
-									loader: "css-loader"
-								},
-								{
-									loader: "postcss-loader",
-									options: {
-										plugins: () => {
-											require("autoprefixer");
-										}
+				rules: [{
+					test: /\.(css|scss)$/,
+					use: ExtractTextPlugin.extract({
+						fallback: "style-loader",
+						use: [
+							{
+								loader: "css-loader"
+							},
+							{
+								loader: "postcss-loader",
+								options: {
+									plugins: () => {
+										require("autoprefixer");
 									}
-								},
-								{
-									loader: "sass-loader"
 								}
-							]
-						})
-					}
-				]
+							},
+							{
+								loader: "sass-loader"
+							}
+						]
+					})
+				}]
 			},
 			plugins: [
 				new ExtractTextPlugin({
@@ -93,40 +91,38 @@ const parts = {
 		}
 		: {
 			module: {
-				rules: [
-					{
-						test: /\.(css|scss)$/,
-						use: [
-							{
-								loader: "style-loader",
-								options: {
-									sourceMap: true
-								}
-							},
-							{
-								loader: "css-loader",
-								options: {
-									sourceMap: true
-								}
-							},
-							{
-								loader: "postcss-loader",
-								options: {
-									plugins: () => {
-										require("autoprefixer");
-									},
-									sourceMap: true
-								}
-							},
-							{
-								loader: "sass-loader",
-								options: {
-									sourceMap: true
-								}
+				rules: [{
+					test: /\.(css|scss)$/,
+					use: [
+						{
+							loader: "style-loader",
+							options: {
+								sourceMap: true
 							}
-						]
-					}
-				]
+						},
+						{
+							loader: "css-loader",
+							options: {
+								sourceMap: true
+							}
+						},
+						{
+							loader: "postcss-loader",
+							options: {
+								plugins: () => {
+									require("autoprefixer");
+								},
+								sourceMap: true
+							}
+						},
+						{
+							loader: "sass-loader",
+							options: {
+								sourceMap: true
+							}
+						}
+					]
+				}]
 			}
 		},
 
