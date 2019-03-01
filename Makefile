@@ -30,7 +30,7 @@ clean-public:
 	rm -fr public
 
 deploy: public
-	aws --profile=steamfilter s3 sync public s3://steamfilter-ui
+	aws --profile=steamfilter s3 sync --delete public s3://steamfilter.net
 
 # Plumbing
 
