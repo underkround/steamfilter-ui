@@ -29,6 +29,9 @@ clean: clean-public
 clean-public:
 	rm -fr public
 
+deploy: public
+	aws --profile=steamfilter s3 sync public s3://steamfilter-ui
+
 # Plumbing
 
 .PHONY: nix-%
