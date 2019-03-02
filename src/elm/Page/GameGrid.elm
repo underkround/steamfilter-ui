@@ -12,13 +12,12 @@ import Html.Attributes as At
 import Html.Events as Ev
 import Http
 import Lib.Remote as Remote exposing (Remote)
-import Steam.Api
-import Steam.Types as ST
+import Steam
 
 
 type alias Model =
-    { profiles : Dict String (Remote (Result String ST.Profile))
-    , gameDetails : Dict ST.AppId (Remote (Result String ST.GameDetails))
+    { profiles : Dict String (Remote (Result String Steam.Profile))
+    , gameDetails : Dict Steam.AppId (Remote (Result String Steam.GameDetails))
     , profileInput : String
     }
 
@@ -33,7 +32,7 @@ init =
 
 type Msg
     = LoadProfile
-    | ApiResponse String (Result Steam.Api.ApiError ST.Profile)
+    | GotProfile String (Result Http.Error Steam.Profile)
     | ProfileInput String
 
 
@@ -47,16 +46,16 @@ update toMsg msg model =
 
         LoadProfile ->
             ( model
-            , Steam.Api.loadProfileXml model.profileInput (ApiResponse model.profileInput)
+            , Steam.loadProfile model.profileInput (GotProfile model.profileInput)
                 |> Cmd.map toMsg
             )
 
-        ApiResponse profileId (Result.Err err) ->
+        GotProfile profileId (Result.Err err) ->
             Debug.log (profileId ++ " -> error") err
                 |> always
                     ( model, Cmd.none )
 
-        ApiResponse profileId (Result.Ok ok) ->
+        GotProfile profileId (Result.Ok ok) ->
             Debug.log (profileId ++ " -> ok") ok
                 |> always
                     ( model, Cmd.none )
