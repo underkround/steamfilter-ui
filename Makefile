@@ -29,7 +29,8 @@ clean: clean-public
 clean-public:
 	rm -fr public
 
-deploy: public
+# Using clean for now to avoid watch-artifacts from going public
+deploy: clean build
 	aws --profile=steamfilter s3 sync --delete public s3://steamfilter.net
 
 # Plumbing
