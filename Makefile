@@ -14,24 +14,18 @@ format:
 watch:
 	./node_modules/.bin/webpack-serve
 
-.PHONY: build
-build: public
-
-public: $(SOURCES_ELM) Makefile webpack.config.js node_modules
-	mkdir -p public
+build: $(SOURCES_ELM) Makefile webpack.config.js node_modules
+	mkdir -p build
 	./node_modules/.bin/webpack --progress --colors --bail
-	touch public
+	touch build
 
 .PHONY: clean
-clean: clean-public
+clean: clean
+	rm -fr build
+	rm -fr build-watch
 
-.PHONY: clean-public
-clean-public:
-	rm -fr public
-
-# Using clean for now to avoid watch-artifacts from going public
-deploy: clean build
-	aws --profile=steamfilter s3 sync --delete public s3://steamfilter.net
+deploy: build
+	aws --profile=steamfilter s3 sync --delete build s3://steamfilter.net
 
 # Plumbing
 

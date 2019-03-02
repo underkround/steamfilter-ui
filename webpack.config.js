@@ -20,7 +20,10 @@ const TARGET_ENV =
 
 const PATHS = {
 	src: path.join(__dirname, 'src'),
-	build: path.join(__dirname, 'public'),
+	build: path.join(
+		__dirname,
+		TARGET_ENV === DEVELOPMENT ? 'build-watch' : 'build'
+	),
 	publicPath: '/'
 };
 

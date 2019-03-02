@@ -1,18 +1,11 @@
 //
 
 body {
-	background-color: #000;
-	color: #cf0;
-	font-size: 10px;
 }
 
-div {
-	font-size: 1.6rem;
-}
-
-button {
-	border: 1px solid #fc0;
-	background: #555;
-	color: #fff;
-	font-size: 1.6rem;
+.debug {
+	border: 2px dotted #ccc;
+	background: #eee;
+	padding: 0;
+	margin: 0;
 }
