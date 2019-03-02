@@ -9,6 +9,7 @@ import Page.GameGrid
 import Page.Home
 import Route exposing (Route)
 import Url exposing (Url)
+import Widget.Statics
 
 
 type alias Flags =
@@ -19,8 +20,7 @@ type alias Model =
     { key : Navigation.Key
     , url : Url
     , route : Maybe Route
-
-    --, page : Maybe Page
+    , gameGrid : Page.GameGrid.State
     }
 
 
@@ -29,6 +29,7 @@ init flags url key =
     ( { key = key
       , url = url
       , route = Route.fromUrl url
+      , gameGrid = Page.GameGrid.init
       }
     , Cmd.none
     )
@@ -70,43 +71,23 @@ update msg model =
 view : Model -> Browser.Document Msg
 view model =
     let
-        link path =
-            H.li [] [ H.a [ At.href path ] [ H.text path ] ]
-
         contentPage : Html Msg
         contentPage =
             case model.route of
                 Nothing ->
                     H.text "404 lol"
 
-                Just Route.Home ->
-                    Page.Home.view
+                Just Route.About ->
+                    H.text "what"
 
                 Just Route.GameGrid ->
-                    Page.GameGrid.view
-
-        debugContent : Html Msg
-        debugContent =
-            H.pre
-                [ At.class "debug" ]
-                [ H.text <| "  Url: " ++ Url.toString model.url
-                , H.text <|
-                    "Route: "
-                        ++ (model.route
-                                |> Maybe.map Route.toString
-                                |> Maybe.withDefault ""
-                           )
-                ]
+                    Page.GameGrid.view model.gameGrid
     in
     { title = "Steam Filter"
     , body =
-        [ debugContent
-        , H.ul []
-            [ link "#/"
-            , link "#/show"
-            ]
-        , H.h2 [] [ H.text "Content" ]
+        [ Widget.Statics.header
         , contentPage
+        , Widget.Statics.footer
         ]
     }
 
