@@ -2,46 +2,42 @@ module Main exposing (main)
 
 import Browser
 import Browser.Navigation as Navigation
-import Html exposing (Html, button, div, text)
+import Html as H exposing (Html)
+import Html.Attributes as At
 import Html.Events as Ev
+import Page.GameGrid
+import Page.Home
+import Route exposing (Route)
 import Url exposing (Url)
-
-
-type alias Model =
-    Int
 
 
 type alias Flags =
     {}
 
 
-type Msg
-    = NoOp
-    | LinkClick Browser.UrlRequest
-    | Increment
-    | Decrement
+type alias Model =
+    { key : Navigation.Key
+    , url : Url
+    , route : Maybe Route
+
+    --, page : Maybe Page
+    }
 
 
 init : Flags -> Url -> Navigation.Key -> ( Model, Cmd Msg )
-init flags url navKey =
-    ( 0, Cmd.none )
+init flags url key =
+    ( { key = key
+      , url = url
+      , route = Route.fromUrl url
+      }
+    , Cmd.none
+    )
 
 
-main : Program Flags Model Msg
-main =
-    Browser.application
-        { init = init
-        , onUrlChange = always NoOp
-        , onUrlRequest = LinkClick
-        , subscriptions = subscriptions
-        , update = update
-        , view = view
-        }
-
-
-subscriptions : Model -> Sub Msg
-subscriptions model =
-    Sub.none
+type Msg
+    = NoOp
+    | LinkClick Browser.UrlRequest
+    | UrlChange Url.Url
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -50,22 +46,83 @@ update msg model =
         NoOp ->
             ( model, Cmd.none )
 
-        LinkClick _ ->
-            ( model, Cmd.none )
+        LinkClick urlRequest ->
+            case urlRequest of
+                Browser.Internal url ->
+                    ( model
+                    , Navigation.pushUrl model.key (Url.toString url)
+                    )
 
-        Increment ->
-            ( model + 1, Cmd.none )
+                Browser.External href ->
+                    ( model
+                    , Navigation.load href
+                    )
 
-        Decrement ->
-            ( model - 1, Cmd.none )
+        UrlChange url ->
+            ( { model
+                | url = url
+                , route = Route.fromUrl url
+              }
+            , Cmd.none
+            )
 
 
 view : Model -> Browser.Document Msg
 view model =
+    let
+        link path =
+            H.li [] [ H.a [ At.href path ] [ H.text path ] ]
+
+        contentPage : Html Msg
+        contentPage =
+            case model.route of
+                Nothing ->
+                    H.text "404 lol"
+
+                Just Route.Home ->
+                    Page.Home.view
+
+                Just Route.GameGrid ->
+                    Page.GameGrid.view
+
+        debugContent : Html Msg
+        debugContent =
+            H.pre
+                [ At.class "debug" ]
+                [ H.text <| "  Url: " ++ Url.toString model.url
+                , H.text <|
+                    "Route: "
+                        ++ (model.route
+                                |> Maybe.map Route.toString
+                                |> Maybe.withDefault ""
+                           )
+                ]
+    in
     { title = "Steam Filter"
     , body =
-        [ button [ Ev.onClick Decrement ] [ text "-" ]
-        , div [] [ text (String.fromInt model) ]
-        , button [ Ev.onClick Increment ] [ text "+" ]
+        [ debugContent
+        , H.ul []
+            [ link "#/"
+            , link "#/show"
+            ]
+        , H.h2 [] [ H.text "Content" ]
+        , contentPage
         ]
     }
+
+
+subscriptions : Model -> Sub Msg
+subscriptions _ =
+    Sub.none
+
+
+main : Program Flags Model Msg
+main =
+    Browser.application
+        { init = init
+        , onUrlChange = UrlChange
+        , onUrlRequest = LinkClick
+        , subscriptions = subscriptions
+        , update = update
+        , view = view
+        }
