@@ -12,27 +12,36 @@ import Html.Attributes as At
 import Html.Events as Ev
 import Http
 import Lib.Remote as Remote exposing (Remote)
+import Lib.RemoteResult as RemoteResult exposing (RemoteResult)
 import Steam
 
 
+type Status
+    = HttpError Http.Error
+    | ProfilePending
+    | DuplicateProfileError
+
+
 type alias Model =
-    { profiles : Dict String (Remote (Result String Steam.Profile))
-    , gameDetails : Dict Steam.AppId (Remote (Result String Steam.GameDetails))
+    { profiles : List Steam.Profile
+    , gameDetails : Dict Steam.AppId (RemoteResult Http.Error Steam.GameDetails)
     , profileInput : String
+    , status : Maybe Status
     }
 
 
 init : Model
 init =
-    { profiles = Dict.empty
+    { profiles = []
     , gameDetails = Dict.empty
     , profileInput = ""
+    , status = Nothing
     }
 
 
 type Msg
     = LoadProfile
-    | GotProfile String (Result Http.Error Steam.Profile)
+    | GotProfile (Result Http.Error Steam.Profile)
     | ProfileInput String
 
 
@@ -45,20 +54,39 @@ update toMsg msg model =
             )
 
         LoadProfile ->
-            ( model
-            , Steam.loadProfile model.profileInput (GotProfile model.profileInput)
+            ( { model
+                | status = Just ProfilePending
+              }
+            , Steam.loadProfile model.profileInput GotProfile
                 |> Cmd.map toMsg
             )
 
-        GotProfile profileId (Result.Err err) ->
-            Debug.log (profileId ++ " -> error") err
-                |> always
-                    ( model, Cmd.none )
+        GotProfile (Ok profile) ->
+            let
+                ( status, profiles ) =
+                    if List.member profile model.profiles then
+                        ( Just DuplicateProfileError
+                        , model.profiles
+                        )
 
-        GotProfile profileId (Result.Ok ok) ->
-            Debug.log (profileId ++ " -> ok") ok
-                |> always
-                    ( model, Cmd.none )
+                    else
+                        ( Nothing
+                        , profile :: model.profiles
+                        )
+            in
+            ( { model
+                | profiles = profiles
+                , status = status
+              }
+            , Cmd.none
+            )
+
+        GotProfile (Result.Err err) ->
+            ( { model
+                | status = Just <| HttpError err
+              }
+            , Cmd.none
+            )
 
 
 view : (Msg -> msg) -> Model -> Html msg
@@ -67,10 +95,14 @@ view toMsg model =
         [ At.class "content game-grid"
         ]
         [ H.h2 [] [ H.text "@TODO: gamegrid" ]
-        , H.input
-            [ Ev.onInput ProfileInput
-            ]
-            []
+        , case model.status of
+            Just ProfilePending ->
+                H.text "LOADING"
+
+            _ ->
+                H.input
+                    [ Ev.onInput ProfileInput ]
+                    []
         , H.button
             [ Ev.onClick LoadProfile
             ]
