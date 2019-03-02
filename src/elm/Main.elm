@@ -5,8 +5,7 @@ import Browser.Navigation as Navigation
 import Html as H exposing (Html)
 import Html.Attributes as At
 import Html.Events as Ev
-import Page.GameGrid
-import Page.Home
+import Page.GameGrid as GameGrid
 import Route exposing (Route)
 import Url exposing (Url)
 import Widget.Statics
@@ -20,7 +19,7 @@ type alias Model =
     { key : Navigation.Key
     , url : Url
     , route : Maybe Route
-    , gameGrid : Page.GameGrid.State
+    , gameGrid : GameGrid.Model
     }
 
 
@@ -29,7 +28,7 @@ init flags url key =
     ( { key = key
       , url = url
       , route = Route.fromUrl url
-      , gameGrid = Page.GameGrid.init
+      , gameGrid = GameGrid.init
       }
     , Cmd.none
     )
@@ -39,6 +38,7 @@ type Msg
     = NoOp
     | LinkClick Browser.UrlRequest
     | UrlChange Url.Url
+    | GameGridMsg GameGrid.Msg
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -67,6 +67,11 @@ update msg model =
             , Cmd.none
             )
 
+        -- Submessages
+        GameGridMsg subMsg ->
+            GameGrid.update GameGridMsg subMsg model.gameGrid
+                |> Tuple.mapFirst (\m -> { model | gameGrid = m })
+
 
 view : Model -> Browser.Document Msg
 view model =
@@ -81,7 +86,7 @@ view model =
                     H.text "what"
 
                 Just Route.GameGrid ->
-                    Page.GameGrid.view model.gameGrid
+                    GameGrid.view GameGridMsg model.gameGrid
     in
     { title = "Steam Filter"
     , body =
