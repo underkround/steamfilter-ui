@@ -21,11 +21,12 @@ type Status
     = HttpError Http.Error
     | ProfilePending
     | DuplicateProfileError
+    | Info String
 
 
 type alias Model =
-    { profiles : List Steam.Profile
-    , gameDetails : Dict Steam.AppId (RemoteResult Http.Error Steam.GameDetails)
+    { profiles : Dict String Steam.Profile
+    , games : Dict Steam.AppId (RemoteResult Http.Error Steam.Game)
     , query : String
     , status : Maybe Status
     }
@@ -33,8 +34,8 @@ type alias Model =
 
 init : Model
 init =
-    { profiles = []
-    , gameDetails = Dict.empty
+    { profiles = Dict.empty
+    , games = Dict.empty
     , query = ""
     , status = Nothing
     }
@@ -45,6 +46,7 @@ type Msg
     | GotProfile (Result Http.Error Steam.Profile)
     | OnInput String
     | OnKeyCodeDown Int
+    | RemoveProfile String
 
 
 update : (Msg -> msg) -> Msg -> Model -> ( Model, Cmd msg )
@@ -72,14 +74,14 @@ update toMsg msg model =
         GotProfile (Ok profile) ->
             let
                 ( status, profiles ) =
-                    if List.member profile model.profiles then
+                    if Dict.member profile.steamId64 model.profiles then
                         ( Just DuplicateProfileError
                         , model.profiles
                         )
 
                     else
                         ( Nothing
-                        , profile :: model.profiles
+                        , Dict.insert profile.steamId64 profile model.profiles
                         )
             in
             ( { model
@@ -91,11 +93,18 @@ update toMsg msg model =
             )
 
         GotProfile (Result.Err err) ->
-            ( { model
-                | status = Just <| HttpError err
-              }
+            ( { model | status = Just <| HttpError err }
             , Cmd.none
             )
+
+        RemoveProfile steamId64 ->
+            if Dict.member steamId64 model.profiles then
+                ( { model | profiles = Dict.remove steamId64 model.profiles }
+                , Cmd.none
+                )
+
+            else
+                ( model, Cmd.none )
 
 
 view : (Msg -> msg) -> Model -> Html msg
@@ -128,34 +137,52 @@ profileManagerView model =
                     [ H.text "LATAA" ]
                 ]
 
-        profileListView : List Steam.Profile -> Html msg
-        profileListView =
-            List.map profileView >> H.div []
-
-        profileView : Steam.Profile -> Html msg
-        profileView profile =
-            H.div
-                [ At.class "profile" ]
-                [ H.text <| String.fromInt profile.steamId64 ]
-
         statusView : Maybe Status -> Html msg
         statusView status =
             case status of
                 Just (HttpError err) ->
-                    H.text <| "Got error :( " ++ Util.httpErrorTostring err
+                    H.div
+                        [ At.class "error" ]
+                        [ H.text <| "Got error :( " ++ Util.httpErrorTostring err ]
 
                 Just DuplicateProfileError ->
-                    H.text "Profile is already added!"
+                    H.div
+                        [ At.class "warning" ]
+                        [ H.text "Profile is already added!" ]
 
                 Just ProfilePending ->
-                    H.text "Loading profile..."
+                    H.div
+                        [ At.class "info" ]
+                        [ H.text "Loading profile..." ]
+
+                Just (Info msg) ->
+                    H.div
+                        [ At.class "info" ]
+                        [ H.text msg ]
 
                 Nothing ->
                     H.text ""
+
+        profileListView : List Steam.Profile -> Html Msg
+        profileListView =
+            List.map profileView >> H.div []
+
+        profileView : Steam.Profile -> Html Msg
+        profileView profile =
+            H.div
+                [ At.class "profile" ]
+                [ H.text profile.steamId
+                , H.text ("(" ++ String.fromInt (Dict.size profile.games) ++ " games)")
+                , H.button
+                    [ At.class "remove"
+                    , Ev.onClick (RemoveProfile profile.steamId64)
+                    ]
+                    [ H.text "[x]" ]
+                ]
     in
     H.div
         [ At.class "profile-manager" ]
         [ inputView model.status
         , statusView model.status
-        , profileListView model.profiles
+        , profileListView (Dict.values model.profiles)
         ]
