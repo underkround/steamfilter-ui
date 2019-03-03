@@ -1,4 +1,4 @@
-module Page.GameGrid exposing
+module GameGrid exposing
     ( Model
     , Msg
     , init
@@ -13,6 +13,7 @@ import Html.Events as Ev
 import Http
 import Lib.Remote as Remote exposing (Remote)
 import Lib.RemoteResult as RemoteResult exposing (RemoteResult)
+import Lib.Util as Util
 import Steam
 
 
@@ -25,7 +26,7 @@ type Status
 type alias Model =
     { profiles : List Steam.Profile
     , gameDetails : Dict Steam.AppId (RemoteResult Http.Error Steam.GameDetails)
-    , profileInput : String
+    , query : String
     , status : Maybe Status
     }
 
@@ -34,7 +35,7 @@ init : Model
 init =
     { profiles = []
     , gameDetails = Dict.empty
-    , profileInput = ""
+    , query = ""
     , status = Nothing
     }
 
@@ -42,22 +43,29 @@ init =
 type Msg
     = LoadProfile
     | GotProfile (Result Http.Error Steam.Profile)
-    | ProfileInput String
+    | OnInput String
+    | OnKeyCodeDown Int
 
 
 update : (Msg -> msg) -> Msg -> Model -> ( Model, Cmd msg )
 update toMsg msg model =
     case msg of
-        ProfileInput profileInput ->
-            ( { model | profileInput = profileInput }
+        OnInput query ->
+            ( { model | query = query }
             , Cmd.none
             )
 
+        OnKeyCodeDown keyCode ->
+            case keyCode of
+                13 ->
+                    update toMsg LoadProfile model
+
+                _ ->
+                    ( model, Cmd.none )
+
         LoadProfile ->
-            ( { model
-                | status = Just ProfilePending
-              }
-            , Steam.loadProfile model.profileInput GotProfile
+            ( { model | status = Just ProfilePending }
+            , Steam.loadProfile model.query GotProfile
                 |> Cmd.map toMsg
             )
 
@@ -77,6 +85,7 @@ update toMsg msg model =
             ( { model
                 | profiles = profiles
                 , status = status
+                , query = ""
               }
             , Cmd.none
             )
@@ -95,18 +104,58 @@ view toMsg model =
         [ At.class "content game-grid"
         ]
         [ H.h2 [] [ H.text "@TODO: gamegrid" ]
-        , case model.status of
-            Just ProfilePending ->
-                H.text "LOADING"
-
-            _ ->
-                H.input
-                    [ Ev.onInput ProfileInput ]
-                    []
-        , H.button
-            [ Ev.onClick LoadProfile
-            ]
-            [ H.text "LATAA"
-            ]
+        , profileManagerView model
         ]
         |> H.map toMsg
+
+
+profileManagerView : Model -> Html Msg
+profileManagerView model =
+    let
+        inputView : Maybe Status -> Html Msg
+        inputView status =
+            H.div
+                [ At.class "profile-input" ]
+                [ H.input
+                    [ Ev.onInput OnInput
+                    , At.value model.query
+                    , Util.onKeyCodeDown OnKeyCodeDown
+                    , At.disabled (status == Just ProfilePending)
+                    ]
+                    []
+                , H.button
+                    [ Ev.onClick LoadProfile ]
+                    [ H.text "LATAA" ]
+                ]
+
+        profileListView : List Steam.Profile -> Html msg
+        profileListView =
+            List.map profileView >> H.div []
+
+        profileView : Steam.Profile -> Html msg
+        profileView profile =
+            H.div
+                [ At.class "profile" ]
+                [ H.text <| String.fromInt profile.steamId64 ]
+
+        statusView : Maybe Status -> Html msg
+        statusView status =
+            case status of
+                Just (HttpError err) ->
+                    H.text <| "Got error :( " ++ Util.httpErrorTostring err
+
+                Just DuplicateProfileError ->
+                    H.text "Profile is already added!"
+
+                Just ProfilePending ->
+                    H.text "Loading profile..."
+
+                Nothing ->
+                    H.text ""
+    in
+    H.div
+        [ At.class "profile-manager" ]
+        [ inputView model.status
+        , statusView model.status
+        , profileListView model.profiles
+        ]

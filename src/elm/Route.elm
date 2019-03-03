@@ -4,9 +4,9 @@ module Route exposing
     , toString
     )
 
+import GameGrid
 import Html as H
 import Html.Attributes as At
-import Page.GameGrid
 import Url exposing (Url)
 import Url.Parser as Parser exposing ((</>), Parser, s)
 

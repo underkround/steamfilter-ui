@@ -2,10 +2,10 @@ module Main exposing (main)
 
 import Browser
 import Browser.Navigation as Navigation
+import GameGrid
 import Html as H exposing (Html)
 import Html.Attributes as At
 import Html.Events as Ev
-import Page.GameGrid as GameGrid
 import Route exposing (Route)
 import Url exposing (Url)
 import Widget.Statics
