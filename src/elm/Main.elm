@@ -8,7 +8,6 @@ import Html.Attributes as At
 import Html.Events as Ev
 import Route exposing (Route)
 import Url exposing (Url)
-import Widget.Statics
 
 
 type alias Flags =
@@ -76,6 +75,19 @@ update msg model =
 view : Model -> Browser.Document Msg
 view model =
     let
+        headerView : Html msg
+        headerView =
+            H.header
+                []
+                [ H.h1 [] [ H.text "Steam Filter" ]
+                ]
+
+        footerView : Html msg
+        footerView =
+            H.footer
+                []
+                [ H.text "Footer" ]
+
         contentPage : Html Msg
         contentPage =
             case model.route of
@@ -90,9 +102,9 @@ view model =
     in
     { title = "Steam Filter"
     , body =
-        [ Widget.Statics.header
+        [ headerView
         , contentPage
-        , Widget.Statics.footer
+        , footerView
         ]
     }
 
