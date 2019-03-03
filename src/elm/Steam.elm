@@ -3,6 +3,7 @@ module Steam exposing
     , Game
     , Profile
     , ProfileGame
+    , loadGames
     , loadProfile
     )
 
@@ -11,6 +12,16 @@ import Http
 import Json.Decode as JD
 import Json.Decode.Pipeline as JDP
 import Lib.Remote as Remote exposing (Remote)
+
+
+urls =
+    --{ profile = \profileId -> "https://api.steamfilter.net/gamelist?skipCache=1&user=" ++ profileId
+    { profile = \profileId -> "https://api.steamfilter.net/gamelist?user=" ++ profileId
+    , gameDetails =
+        \appIds ->
+            "https://api.steamfilter.net/gamedetails?appId="
+                ++ (List.map String.fromInt appIds |> String.join ",")
+    }
 
 
 type alias AppId =
@@ -63,10 +74,28 @@ profileGameDecoder =
 type alias Game =
     { appId : AppId
     , name : String
-    , logo : String
-    , storeLink : String
-    , globalStatsLink : String
+    , icon : String
+
+    --, storeLink : String
+    , features : List String
+
+    --, genres : List String
+    --, releaseDate : String
     }
+
+
+gameDecoder : JD.Decoder Game
+gameDecoder =
+    JD.succeed Game
+        |> JDP.required "AppId" JD.int
+        |> JDP.required "Name" JD.string
+        |> JDP.required "Icon" JD.string
+        |> JDP.optional "Features" (JD.list JD.string) []
+
+
+gameDetailsApiDecoder : JD.Decoder (List Game)
+gameDetailsApiDecoder =
+    JD.list gameDecoder
 
 
 
@@ -75,13 +104,15 @@ type alias Game =
 
 loadProfile : String -> (Result Http.Error Profile -> msg) -> Cmd msg
 loadProfile profileId msg =
-    let
-        -- @TODO: build url properly
-        url : String
-        url =
-            "https://api.steamfilter.net/gamelist?user=" ++ profileId
-    in
     Http.get
-        { url = url
+        { url = urls.profile profileId
         , expect = Http.expectJson msg profileApiDecoder
+        }
+
+
+loadGames : List AppId -> (Result Http.Error (List Game) -> msg) -> Cmd msg
+loadGames appIds msg =
+    Http.get
+        { url = urls.gameDetails appIds
+        , expect = Http.expectJson msg gameDetailsApiDecoder
         }
