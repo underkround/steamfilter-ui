@@ -26,6 +26,8 @@ clean: clean
 
 deploy: build
 	aws --profile=steamfilter s3 sync --delete build s3://steamfilter.net
+	#aws cloudfront create-invalidation --distribution-id foobarfoobar --paths=/\*
+	aws --profile=steamfilter cloudfront create-invalidation --distribution-id E1O0GQZYQ7T16Q --paths=/index.html
 
 # Plumbing
 
