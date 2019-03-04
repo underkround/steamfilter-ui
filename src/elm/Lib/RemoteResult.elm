@@ -6,6 +6,7 @@ module Lib.RemoteResult exposing
     , isPending
     , isReceived
     , map
+    , oks
     )
 
 
@@ -14,6 +15,19 @@ type RemoteResult err a
     | Pending
     | Err err
     | Ok a
+
+
+oks : List (RemoteResult err a) -> List a
+oks results =
+    case results of
+        [] ->
+            []
+
+        (Ok x) :: xs ->
+            x :: oks xs
+
+        _ :: xs ->
+            oks xs
 
 
 map : (a -> b) -> RemoteResult err a -> RemoteResult err b

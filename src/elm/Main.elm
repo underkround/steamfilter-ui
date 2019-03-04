@@ -2,6 +2,7 @@ module Main exposing (main)
 
 import Browser
 import Browser.Navigation as Navigation
+import Filters exposing (Filters)
 import GameGrid
 import Html as H exposing (Html)
 import Html.Attributes as At

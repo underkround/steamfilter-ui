@@ -3,6 +3,7 @@ module Steam exposing
     , Game
     , Profile
     , ProfileGame
+    , SteamId64
     , loadGames
     , loadProfile
     )
@@ -24,12 +25,20 @@ urls =
     }
 
 
+
+-- Using string for now because of backend reasons
+
+
+type alias SteamId64 =
+    String
+
+
 type alias AppId =
     Int
 
 
 type alias Profile =
-    { steamId64 : String
+    { steamId64 : SteamId64
     , steamId : String
     , avatarIcon : String
     , games : Dict AppId ProfileGame
@@ -75,12 +84,13 @@ type alias Game =
     { appId : AppId
     , name : String
     , icon : String
+    , developer : String
+    , publisher : String
 
     --, storeLink : String
     , features : List String
-
-    --, genres : List String
-    --, releaseDate : String
+    , genres : List String
+    , releaseDate : Int
     }
 
 
@@ -90,7 +100,11 @@ gameDecoder =
         |> JDP.required "AppId" JD.int
         |> JDP.required "Name" JD.string
         |> JDP.required "Icon" JD.string
+        |> JDP.optional "Developer" JD.string ""
+        |> JDP.optional "Publisher" JD.string ""
         |> JDP.optional "Features" (JD.list JD.string) []
+        |> JDP.optional "Genres" (JD.list JD.string) []
+        |> JDP.required "ReleaseDate" JD.int
 
 
 gameDetailsApiDecoder : JD.Decoder (List Game)
