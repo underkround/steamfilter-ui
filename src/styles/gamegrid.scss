@@ -1,0 +1,30 @@
+
+
+.filters {
+	.toggle {
+		background: #eee;
+		color: #000;
+		box-shadow: none;
+		outline: none;
+		cursor: pointer;
+		border: none;
+		border-radius: 5px;
+		padding: 3px 7px;
+		margin: 2px;
+		.weight {
+			font-size: 80%;
+			font-style: italic;
+			color: #666;
+		}
+		&.selected {
+			color: #cf0;
+			background: #444;
+			.weight {
+				color: #aaa;
+			}
+		}
+		&:focus {
+			outline: none;
+		}
+	}
+}

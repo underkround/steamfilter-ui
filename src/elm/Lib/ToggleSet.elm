@@ -1,114 +1,166 @@
 module Lib.ToggleSet exposing
     ( ToggleSet
     , anySelected
-    , clearSelected
     , empty
     , getAvailable
     , getSelected
+    , getWeight
     , isAvailable
     , isEmpty
     , isSelected
+    , mapToBoolList
     , mapToList
-    , setAvailable
+    , setAvailablesGrouped
+    , setAvailablesWeighted
+    , toBoolList
     , toList
     , toggle
+    , unsetAll
     )
 
+import Dict exposing (Dict)
 import Lib.Util as Util
+import List.Extra
 import Set exposing (Set)
 
 
 type alias ToggleSet a =
-    { available : Set a
-    , selected : Set a
+    Dict a Flags
+
+
+type alias Flags =
+    { selected : Bool
+    , weight : Int
     }
 
 
 empty : ToggleSet comparable
 empty =
-    { available = Set.empty
-    , selected = Set.empty
-    }
+    Dict.empty
+
+
+{-| Update availables, setting weight by the times item appears in the list |
+-}
+setAvailablesGrouped : List String -> ToggleSet String -> ToggleSet String
+setAvailablesGrouped availablesList oldSet =
+    let
+        --fromGrouped : ( comparable, List comparable ) -> ( comparable, Flags )
+        fromGrouped ( key, grouped ) =
+            ( key
+            , { selected = isSelected key oldSet
+              , weight = List.length grouped
+              }
+            )
+    in
+    availablesList
+        |> List.sort
+        |> List.Extra.group
+        |> List.map fromGrouped
+        |> Dict.fromList
+
+
+setAvailablesWeighted : List ( comparable, Int ) -> ToggleSet comparable -> ToggleSet comparable
+setAvailablesWeighted availablesWeightList oldSet =
+    let
+        fromWeighted : ( comparable, Int ) -> ( comparable, Flags )
+        fromWeighted ( key, weight ) =
+            ( key
+            , { selected = isSelected key oldSet
+              , weight = weight
+              }
+            )
+    in
+    availablesWeightList
+        |> List.map fromWeighted
+        |> Dict.fromList
 
 
 {-| Are there any available options? |
 -}
 isEmpty : ToggleSet comparable -> Bool
 isEmpty =
-    .available >> Set.isEmpty
+    Dict.isEmpty
 
 
-clearSelected : ToggleSet comparable -> ToggleSet comparable
-clearSelected set =
-    { set | selected = Set.empty }
+unsetAll : ToggleSet comparable -> ToggleSet comparable
+unsetAll =
+    Dict.map (\_ flags -> { flags | selected = False })
 
 
 getAvailable : ToggleSet comparable -> List comparable
-getAvailable set =
-    Set.toList set.available
+getAvailable =
+    Dict.keys
 
 
 getSelected : ToggleSet comparable -> List comparable
-getSelected set =
-    Set.toList set.selected
+getSelected =
+    Dict.filter (\_ flags -> flags.selected)
+        >> Dict.keys
 
 
 {-| Are there any filters currently selected? |
 -}
 anySelected : ToggleSet comparable -> Bool
 anySelected =
-    .selected >> Set.isEmpty >> not
+    Dict.filter (\_ flags -> flags.selected)
+        >> Dict.isEmpty
+        >> not
 
 
 toggle : comparable -> ToggleSet comparable -> ToggleSet comparable
-toggle x set =
-    if Set.member x set.selected then
-        { set
-            | selected = Set.remove x set.selected
-        }
-
-    else if Set.member x set.available then
-        { set
-            | selected = Set.insert x set.selected
-        }
-
-    else
-        set
+toggle key set =
+    let
+        toggler : Maybe Flags -> Maybe Flags
+        toggler =
+            Maybe.map (\flags -> { flags | selected = not flags.selected })
+    in
+    Dict.update key toggler set
 
 
-toList : ToggleSet comparable -> List ( comparable, Bool )
-toList set =
-    Set.toList set.available
-        |> List.map (\x -> ( x, isSelected set x ))
+toList : ToggleSet comparable -> List ( comparable, Bool, Int )
+toList =
+    let
+        mapper : comparable -> Flags -> ( comparable, Bool, Int )
+        mapper key flags =
+            ( key, flags.selected, flags.weight )
+    in
+    Dict.map mapper >> Dict.values
 
 
-mapToList : (( comparable, Bool ) -> a) -> ToggleSet comparable -> List a
+toBoolList : ToggleSet comparable -> List ( comparable, Bool )
+toBoolList =
+    let
+        mapper : comparable -> Flags -> ( comparable, Bool )
+        mapper key flags =
+            ( key, flags.selected )
+    in
+    Dict.map mapper >> Dict.values
+
+
+mapToList : (( comparable, Bool, Int ) -> a) -> ToggleSet comparable -> List a
 mapToList f =
     toList >> List.map f
 
 
-isAvailable : ToggleSet comparable -> comparable -> Bool
-isAvailable set =
-    Util.flip Set.member set.available
+mapToBoolList : (( comparable, Bool ) -> a) -> ToggleSet comparable -> List a
+mapToBoolList f =
+    toBoolList >> List.map f
 
 
-isSelected : ToggleSet comparable -> comparable -> Bool
-isSelected =
-    .selected >> Util.flip Set.member
+isAvailable : comparable -> ToggleSet comparable -> Bool
+isAvailable =
+    Dict.member
 
 
-allSelected : ToggleSet comparable -> List comparable -> Bool
-allSelected predicate =
-    List.all (Util.flip Set.member predicate.selected)
+isSelected : comparable -> ToggleSet comparable -> Bool
+isSelected key set =
+    Dict.get key set
+        |> Maybe.map .selected
+        |> Maybe.withDefault False
 
 
-setAvailable : List comparable -> ToggleSet comparable -> ToggleSet comparable
-setAvailable availableList set =
-    let
-        available =
-            Set.fromList availableList
-    in
-    { set
-        | available = available
-        , selected = Set.intersect set.selected available
-    }
+getWeight : comparable -> ToggleSet comparable -> Int
+getWeight key set =
+    Dict.get key set
+        |> Maybe.map .weight
+        |> Maybe.withDefault 0

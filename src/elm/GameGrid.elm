@@ -416,13 +416,16 @@ gameListView model =
                         ]
 
                 RemoteResult.Ok game ->
-                    case Filters.match model.filters game of
+                    case Filters.match model.filters (Dict.values model.profiles) game of
                         False ->
-                            H.tr [ At.class "game game-hidden" ]
-                                [ H.td [] [ H.text (String.fromInt appId) ]
-                                , H.td [ At.colspan spanCols ] [ H.text "(hidden)" ]
-                                ]
+                            H.text ""
 
+                        --  H.tr [ At.class "game game-hidden" ]
+                        --      [ H.td [] [ H.text (String.fromInt appId) ]
+                        --      , H.td [ At.colspan 2 ] [ H.text "(hidden)" ]
+                        --      , H.td [] [ game.features |> String.join ", " |> H.text ]
+                        --      , H.td [] [ game.genres |> String.join ", " |> H.text ]
+                        --      ]
                         True ->
                             H.tr [ At.class "game game-ok" ]
                                 [ H.td [] [ H.text (String.fromInt game.appId) ]
