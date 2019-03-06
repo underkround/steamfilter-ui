@@ -12,7 +12,6 @@ import Dict exposing (Dict)
 import Http
 import Json.Decode as JD
 import Json.Decode.Pipeline as JDP
-import Lib.Remote as Remote exposing (Remote)
 
 
 urls =

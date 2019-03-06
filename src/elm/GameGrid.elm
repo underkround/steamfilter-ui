@@ -12,7 +12,6 @@ import Html as H exposing (Html)
 import Html.Attributes as At
 import Html.Events as Ev
 import Http
-import Lib.Remote as Remote exposing (Remote)
 import Lib.RemoteResult as RemoteResult exposing (RemoteResult)
 import Lib.Util as Util
 import Steam
@@ -27,7 +26,7 @@ type Status
 
 type alias Model =
     { profiles : Dict Steam.SteamId64 Steam.Profile
-    , games : Dict Steam.AppId (RemoteResult Http.Error Steam.Game)
+    , games : Dict Steam.AppId (RemoteResult Http.Error Steam.AppId Steam.Game)
     , query : String
     , status : Maybe Status
     , filters : Filters
@@ -36,7 +35,7 @@ type alias Model =
 
 batchSize : Int
 batchSize =
-    3
+    30
 
 
 init : Model
@@ -156,7 +155,7 @@ gameListToDict =
     List.map toPair >> Dict.fromList
 
 
-bulkUpdateGames : List Steam.AppId -> Dict Steam.AppId (RemoteResult Http.Error Steam.Game) -> Model -> Model
+bulkUpdateGames : List Steam.AppId -> Dict Steam.AppId (RemoteResult Http.Error Steam.AppId Steam.Game) -> Model -> Model
 bulkUpdateGames targetAppIds receivedGames model =
     case targetAppIds of
         [] ->
@@ -164,7 +163,7 @@ bulkUpdateGames targetAppIds receivedGames model =
 
         appId :: xs ->
             let
-                updatedGame : RemoteResult Http.Error Steam.Game
+                updatedGame : RemoteResult Http.Error Steam.AppId Steam.Game
                 updatedGame =
                     Dict.get appId receivedGames
                         |> Maybe.withDefault (RemoteResult.Err (Http.BadStatus 404))
@@ -184,23 +183,23 @@ onGameProfileChange toMsg =
                         |> Dict.values
                         |> List.concatMap (.games >> Dict.keys)
 
-                games : Dict Steam.AppId (RemoteResult Http.Error Steam.Game)
+                games : Dict Steam.AppId (RemoteResult Http.Error Steam.AppId Steam.Game)
                 games =
                     profileAppIds
                         |> List.map toGame
                         |> Dict.fromList
 
-                toGame : Steam.AppId -> ( Steam.AppId, RemoteResult Http.Error Steam.Game )
+                toGame : Steam.AppId -> ( Steam.AppId, RemoteResult Http.Error Steam.AppId Steam.Game )
                 toGame appId =
                     ( appId
                     , Dict.get appId model.games
-                        |> Maybe.withDefault RemoteResult.Initial
+                        |> Maybe.withDefault (RemoteResult.Queued appId)
                     )
 
                 nextLoadIds : List Steam.AppId
                 nextLoadIds =
                     games
-                        |> Dict.filter (\_ gameRes -> RemoteResult.isInitial gameRes)
+                        |> Dict.filter (\_ gameRes -> RemoteResult.isQueued gameRes)
                         |> Dict.keys
                         |> List.take batchSize
             in
@@ -212,10 +211,10 @@ onGameProfileChange toMsg =
 
                 _ ->
                     let
-                        pendingGameStates : Dict Steam.AppId (RemoteResult Http.Error Steam.Game)
+                        pendingGameStates : Dict Steam.AppId (RemoteResult Http.Error Steam.AppId Steam.Game)
                         pendingGameStates =
                             nextLoadIds
-                                |> List.map (\id -> ( id, RemoteResult.Pending ))
+                                |> List.map (\id -> ( id, RemoteResult.Loading id ))
                                 |> Dict.fromList
                     in
                     ( { model | games = games }
@@ -390,20 +389,20 @@ gameListView model =
                     [ H.span [] [ H.text (String.fromInt okCount) ] ]
                 ]
 
-        gameView : ( Steam.AppId, RemoteResult Http.Error Steam.Game ) -> Html Msg
+        gameView : ( Steam.AppId, RemoteResult Http.Error Steam.AppId Steam.Game ) -> Html Msg
         gameView ( appId, gameResult ) =
             let
                 spanCols =
                     4
             in
             case gameResult of
-                RemoteResult.Initial ->
+                RemoteResult.Queued _ ->
                     H.tr [ At.class "game game-queued" ]
                         [ H.td [] [ H.text (String.fromInt appId) ]
                         , H.td [ At.colspan spanCols ] [ H.text "Queued..." ]
                         ]
 
-                RemoteResult.Pending ->
+                RemoteResult.Loading _ ->
                     H.tr [ At.class "game game-pending" ]
                         [ H.td [] [ H.text (String.fromInt appId) ]
                         , H.td [ At.colspan spanCols ] [ H.text "Loading..." ]

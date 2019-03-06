@@ -1,23 +1,23 @@
 module Lib.RemoteResult exposing
     ( RemoteResult(..)
     , isErr
-    , isInitial
+    , isLoading
     , isOk
-    , isPending
+    , isQueued
     , isReceived
     , map
     , oks
     )
 
 
-type RemoteResult err a
-    = Initial
-    | Pending
+type RemoteResult err k a
+    = Queued k
+    | Loading k
     | Err err
     | Ok a
 
 
-oks : List (RemoteResult err a) -> List a
+oks : List (RemoteResult err k a) -> List a
 oks results =
     case results of
         [] ->
@@ -30,53 +30,59 @@ oks results =
             oks xs
 
 
-map : (a -> b) -> RemoteResult err a -> RemoteResult err b
-map fOk =
-    mapBoth identity fOk
-
-
-mapErr : (err -> err2) -> RemoteResult err a -> RemoteResult err2 a
-mapErr fErr =
-    mapBoth fErr identity
-
-
-mapBoth : (err -> err2) -> (a -> b) -> RemoteResult err a -> RemoteResult err2 b
-mapBoth fErr fOk remote =
+map : (a -> b) -> RemoteResult err k a -> RemoteResult err k b
+map f remote =
     case remote of
-        Initial ->
-            Initial
+        Queued k ->
+            Queued k
 
-        Pending ->
-            Pending
+        Loading k ->
+            Loading k
 
         Err err ->
-            Err (fErr err)
+            Err err
 
         Ok a ->
-            Ok (fOk a)
+            Ok (f a)
 
 
-isInitial : RemoteResult err a -> Bool
-isInitial remote =
+mapErr : (err -> err2) -> RemoteResult err k a -> RemoteResult err2 k a
+mapErr f remote =
     case remote of
-        Initial ->
+        Queued k ->
+            Queued k
+
+        Loading k ->
+            Loading k
+
+        Err err ->
+            Err (f err)
+
+        Ok a ->
+            Ok a
+
+
+isQueued : RemoteResult err k a -> Bool
+isQueued remote =
+    case remote of
+        Queued _ ->
             True
 
         _ ->
             False
 
 
-isPending : RemoteResult err a -> Bool
-isPending remote =
+isLoading : RemoteResult err k a -> Bool
+isLoading remote =
     case remote of
-        Pending ->
+        Loading _ ->
             True
 
         _ ->
             False
 
 
-isErr : RemoteResult err a -> Bool
+isErr : RemoteResult err k a -> Bool
 isErr remote =
     case remote of
         Err _ ->
@@ -86,7 +92,7 @@ isErr remote =
             False
 
 
-isOk : RemoteResult err a -> Bool
+isOk : RemoteResult err k a -> Bool
 isOk remote =
     case remote of
         Ok _ ->
@@ -96,6 +102,6 @@ isOk remote =
             False
 
 
-isReceived : RemoteResult err a -> Bool
+isReceived : RemoteResult err k a -> Bool
 isReceived remote =
     isOk remote || isErr remote
