@@ -50,6 +50,7 @@ const parts = {
 						options: {
 							cwd: __dirname,
 							debug: TARGET_ENV === DEVELOPMENT,
+							forceWatch: TARGET_ENV === DEVELOPMENT,
 							optimize: TARGET_ENV === PRODUCTION,
 							verbose: true
 						}
