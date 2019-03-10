@@ -1,6 +1,7 @@
 module Steam exposing
     ( AppId
-    , Game
+    , GameDetails
+    , GameResult(..)
     , Profile
     , ProfileGame
     , SteamId64
@@ -79,7 +80,15 @@ profileGameDecoder =
         |> JDP.required "playtime_forever" JD.int
 
 
-type alias Game =
+loadProfile : String -> (Result Http.Error Profile -> msg) -> Cmd msg
+loadProfile profileId msg =
+    Http.get
+        { url = urls.profile profileId
+        , expect = Http.expectJson msg profileApiDecoder
+        }
+
+
+type alias GameDetails =
     { appId : AppId
     , name : String
     , icon : String
@@ -93,9 +102,15 @@ type alias Game =
     }
 
 
-gameDecoder : JD.Decoder Game
-gameDecoder =
-    JD.succeed Game
+type GameResult
+    = GameFound GameDetails
+    | GameRemoved AppId
+    | GameParseError
+
+
+gameDetailsDecoder : JD.Decoder GameDetails
+gameDetailsDecoder =
+    JD.succeed GameDetails
         |> JDP.required "AppId" JD.int
         |> JDP.required "Name" JD.string
         |> JDP.required "Icon" JD.string
@@ -106,24 +121,26 @@ gameDecoder =
         |> JDP.required "ReleaseDate" JD.int
 
 
-gameDetailsApiDecoder : JD.Decoder (List Game)
+gameDetailsApiDecoder : JD.Decoder (List GameResult)
 gameDetailsApiDecoder =
-    JD.list gameDecoder
+    let
+        toGame : GameDetails -> GameResult
+        toGame details =
+            case details.name of
+                "" ->
+                    GameRemoved details.appId
+
+                _ ->
+                    GameFound details
+    in
+    JD.list
+        (JD.maybe gameDetailsDecoder
+            |> JD.map (Maybe.map toGame)
+            |> JD.map (Maybe.withDefault GameParseError)
+        )
 
 
-
--- PUBLIC API
-
-
-loadProfile : String -> (Result Http.Error Profile -> msg) -> Cmd msg
-loadProfile profileId msg =
-    Http.get
-        { url = urls.profile profileId
-        , expect = Http.expectJson msg profileApiDecoder
-        }
-
-
-loadGames : List AppId -> (Result Http.Error (List Game) -> msg) -> Cmd msg
+loadGames : List AppId -> (Result Http.Error (List GameResult) -> msg) -> Cmd msg
 loadGames appIds msg =
     Http.get
         { url = urls.gameDetails appIds

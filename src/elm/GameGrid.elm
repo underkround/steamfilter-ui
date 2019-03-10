@@ -12,8 +12,9 @@ import Html as H exposing (Html)
 import Html.Attributes as At
 import Html.Events as Ev
 import Http
-import Lib.RemoteResult as RemoteResult exposing (RemoteResult)
+import Lib.RemoteSet as RemoteSet exposing (RemoteSet)
 import Lib.Util as Util
+import Set exposing (Set)
 import Steam
 
 
@@ -26,7 +27,9 @@ type Status
 
 type alias Model =
     { profiles : Dict Steam.SteamId64 Steam.Profile
-    , games : Dict Steam.AppId (RemoteResult Http.Error Steam.AppId Steam.Game)
+    , gameDetails : Dict Steam.AppId Steam.GameDetails
+    , gameProgress : RemoteSet Http.Error Steam.AppId
+    , matching : List Steam.GameDetails
     , query : String
     , status : Maybe Status
     , filters : Filters
@@ -41,7 +44,9 @@ batchSize =
 init : Model
 init =
     { profiles = Dict.empty
-    , games = Dict.empty
+    , gameDetails = Dict.empty
+    , gameProgress = RemoteSet.init 2
+    , matching = []
     , query = ""
     , status = Nothing
     , filters = Filters.init
@@ -51,7 +56,7 @@ init =
 type Msg
     = LoadProfile
     | ReceiveProfile (Result Http.Error Steam.Profile)
-    | ReceiveGames (List Steam.AppId) (Result Http.Error (List Steam.Game))
+    | ReceiveGames (List Steam.AppId) (Result Http.Error (List Steam.GameResult))
     | OnInput String
     | OnKeyCodeDown Int
     | RemoveProfile String
@@ -74,6 +79,9 @@ update toMsg msg model =
                 _ ->
                     ( model, Cmd.none )
 
+        --
+        -- PROFILES
+        --
         LoadProfile ->
             ( { model | status = Just ProfilePending }
             , Steam.loadProfile model.query ReceiveProfile
@@ -100,41 +108,74 @@ update toMsg msg model =
               }
             , Cmd.none
             )
-                |> onGameProfileChange toMsg
+                |> updateGamesFromProfiles toMsg
+                |> updateGameProgress toMsg
 
         ReceiveProfile (Result.Err err) ->
             ( { model | status = Just <| HttpError err }
             , Cmd.none
             )
 
-        ReceiveGames appIds (Ok games) ->
+        RemoveProfile steamId64 ->
+            ( { model | profiles = Dict.remove steamId64 model.profiles }
+            , Cmd.none
+            )
+                |> updateGamesFromProfiles toMsg
+
+        --
+        -- GAMES
+        --
+        ReceiveGames appIds (Err err) ->
+            -- @TODO: Fail instead of requeue to avoid infinite repeating
+            ( { model
+                | gameProgress = RemoteSet.requeueLoading appIds model.gameProgress
+                , status = Just (HttpError err)
+              }
+            , Cmd.none
+            )
+                |> updateGameProgress toMsg
+
+        ReceiveGames appIds (Ok gameResults) ->
             let
-                updatedGames =
-                    gameListToDict games
-                        |> Dict.map (\id game -> RemoteResult.Ok game)
+                importGames : List Steam.GameResult -> Model -> Model
+                importGames games model_ =
+                    case games of
+                        [] ->
+                            model_
+
+                        Steam.GameParseError :: xs ->
+                            importGames xs model_
+
+                        (Steam.GameFound details) :: xs ->
+                            importGames xs
+                                { model_
+                                    | gameDetails = Dict.insert details.appId details model_.gameDetails
+                                    , gameProgress = RemoteSet.succeed [ details.appId ] model_.gameProgress
+                                }
+
+                        (Steam.GameRemoved appId) :: xs ->
+                            importGames xs
+                                { model_
+                                    | gameProgress = RemoteSet.succeed [ appId ] model_.gameProgress
+                                }
+
+                requeueMissed : Model -> Model
+                requeueMissed model_ =
+                    { model_
+                        | gameProgress = RemoteSet.requeueLoading appIds model_.gameProgress
+                    }
             in
             ( model
-                |> bulkUpdateGames appIds updatedGames
+                |> importGames gameResults
+                |> requeueMissed
             , Cmd.none
             )
-                |> onGameProfileChange toMsg
+                |> updateGamesFromProfiles toMsg
+                |> updateGameProgress toMsg
 
-        ReceiveGames appIds (Result.Err err) ->
-            ( model
-                |> bulkUpdateGames appIds Dict.empty
-            , Cmd.none
-            )
-                |> onGameProfileChange toMsg
-
-        RemoveProfile steamId64 ->
-            if Dict.member steamId64 model.profiles then
-                ( { model | profiles = Dict.remove steamId64 model.profiles }
-                , Cmd.none
-                )
-
-            else
-                ( model, Cmd.none )
-
+        --
+        -- SUBMESSAGES
+        --
         FiltersMsg subMsg ->
             let
                 filters =
@@ -145,103 +186,118 @@ update toMsg msg model =
             )
 
 
-gameListToDict : List Steam.Game -> Dict Steam.AppId Steam.Game
-gameListToDict =
+updateGamesFromProfiles : (Msg -> msg) -> ( Model, Cmd msg ) -> ( Model, Cmd msg )
+updateGamesFromProfiles toMsg ( model, cmd ) =
     let
-        toPair : Steam.Game -> ( Steam.AppId, Steam.Game )
-        toPair game =
-            ( game.appId, game )
+        allGameIds : List Steam.AppId
+        allGameIds =
+            model.profiles
+                |> Dict.toList
+                |> List.concatMap (\( _, profile ) -> Dict.keys profile.games)
     in
-    List.map toPair >> Dict.fromList
+    ( model
+        -- Handle discovery of new games
+        |> (\m ->
+                { m
+                    | gameProgress = RemoteSet.queue allGameIds m.gameProgress
+                }
+           )
+        -- Handle game removal (profile removed)
+        |> (\m ->
+                { m
+                    | gameProgress = RemoteSet.whitelist allGameIds m.gameProgress
+                }
+           )
+    , cmd
+    )
 
 
-bulkUpdateGames : List Steam.AppId -> Dict Steam.AppId (RemoteResult Http.Error Steam.AppId Steam.Game) -> Model -> Model
-bulkUpdateGames targetAppIds receivedGames model =
-    case targetAppIds of
-        [] ->
-            model
-
-        appId :: xs ->
-            let
-                updatedGame : RemoteResult Http.Error Steam.AppId Steam.Game
-                updatedGame =
-                    Dict.get appId receivedGames
-                        |> Maybe.withDefault (RemoteResult.Err (Http.BadStatus 404))
-            in
-            bulkUpdateGames xs receivedGames { model | games = Dict.insert appId updatedGame model.games }
+updateGameProgress : (Msg -> msg) -> ( Model, Cmd msg ) -> ( Model, Cmd msg )
+updateGameProgress toMsg ( model, cmd ) =
+    -- @TODO: batch-load next batch size of items
+    -- Repeat until no more queued
+    ( model, cmd )
 
 
-onGameProfileChange : (Msg -> msg) -> ( Model, Cmd msg ) -> ( Model, Cmd msg )
-onGameProfileChange toMsg =
-    let
-        checkForGameActions : ( Model, Cmd msg ) -> ( Model, Cmd msg )
-        checkForGameActions ( model, cmd ) =
-            let
-                profileAppIds : List Steam.AppId
-                profileAppIds =
-                    model.profiles
-                        |> Dict.values
-                        |> List.concatMap (.games >> Dict.keys)
 
-                games : Dict Steam.AppId (RemoteResult Http.Error Steam.AppId Steam.Game)
-                games =
-                    profileAppIds
-                        |> List.map toGame
-                        |> Dict.fromList
+--updateGameMatching : (Msg -> msg) -> ( Model, Cmd msg ) -> ( Model, Cmd msg )
+--updateGameMatching toMsg ( model, cmd ) =
+--    { model
+--        | matching = Filters.match model.filters model.profiles model.gameDetails
+--    }
+{-
+   onGameProfileChange : (Msg -> msg) -> ( Model, Cmd msg ) -> ( Model, Cmd msg )
+   onGameProfileChange toMsg =
+       let
+           checkForGameActions : ( Model, Cmd msg ) -> ( Model, Cmd msg )
+           checkForGameActions ( model, cmd ) =
+               let
+                   profileAppIds : List Steam.AppId
+                   profileAppIds =
+                       model.profiles
+                           |> Dict.values
+                           |> List.concatMap (.games >> Dict.keys)
 
-                toGame : Steam.AppId -> ( Steam.AppId, RemoteResult Http.Error Steam.AppId Steam.Game )
-                toGame appId =
-                    ( appId
-                    , Dict.get appId model.games
-                        |> Maybe.withDefault (RemoteResult.Queued appId)
-                    )
+                   games : Dict Steam.AppId (RemoteResult Http.Error Steam.AppId Steam.Game)
+                   games =
+                       profileAppIds
+                           |> List.map toGame
+                           |> Dict.fromList
 
-                nextLoadIds : List Steam.AppId
-                nextLoadIds =
-                    games
-                        |> Dict.filter (\_ gameRes -> RemoteResult.isQueued gameRes)
-                        |> Dict.keys
-                        |> List.take batchSize
-            in
-            case nextLoadIds of
-                [] ->
-                    ( { model | games = games }
-                    , cmd
-                    )
+                   toGame : Steam.AppId -> ( Steam.AppId, RemoteResult Http.Error Steam.AppId Steam.Game )
+                   toGame appId =
+                       ( appId
+                       , Dict.get appId model.games
+                           |> Maybe.withDefault (RemoteResult.Queued appId)
+                       )
 
-                _ ->
-                    let
-                        pendingGameStates : Dict Steam.AppId (RemoteResult Http.Error Steam.AppId Steam.Game)
-                        pendingGameStates =
-                            nextLoadIds
-                                |> List.map (\id -> ( id, RemoteResult.Loading id ))
-                                |> Dict.fromList
-                    in
-                    ( { model | games = games }
-                        |> bulkUpdateGames nextLoadIds pendingGameStates
-                    , Cmd.batch
-                        [ cmd
-                        , Steam.loadGames nextLoadIds (ReceiveGames nextLoadIds)
-                            |> Cmd.map toMsg
-                        ]
-                    )
+                   nextLoadIds : List Steam.AppId
+                   nextLoadIds =
+                       games
+                           |> Dict.filter (\_ gameRes -> RemoteResult.isQueued gameRes)
+                           |> Dict.keys
+                           |> List.take batchSize
+               in
+               case nextLoadIds of
+                   [] ->
+                       ( { model | games = games }
+                       , cmd
+                       )
 
-        refreshFilters : ( Model, Cmd msg ) -> ( Model, Cmd msg )
-        refreshFilters ( model, cmd ) =
-            let
-                filters =
-                    Filters.refresh
-                        FiltersMsg
-                        (Dict.values model.profiles)
-                        (Dict.values model.games |> RemoteResult.oks)
-                        model.filters
-            in
-            ( { model | filters = filters }
-            , cmd
-            )
-    in
-    checkForGameActions
-        >> refreshFilters
+                   _ ->
+                       let
+                           pendingGameStates : Dict Steam.AppId (RemoteResult Http.Error Steam.AppId Steam.Game)
+                           pendingGameStates =
+                               nextLoadIds
+                                   |> List.map (\id -> ( id, RemoteResult.Loading id ))
+                                   |> Dict.fromList
+                       in
+                       ( { model | games = games }
+                           |> bulkUpdateGames nextLoadIds pendingGameStates
+                       , Cmd.batch
+                           [ cmd
+                           , Steam.loadGames nextLoadIds (ReceiveGames nextLoadIds)
+                               |> Cmd.map toMsg
+                           ]
+                       )
+
+           refreshFilters : ( Model, Cmd msg ) -> ( Model, Cmd msg )
+           refreshFilters ( model, cmd ) =
+               let
+                   filters =
+                       Filters.refresh
+                           FiltersMsg
+                           (Dict.values model.profiles)
+                           (Dict.values model.games |> RemoteResult.oks)
+                           model.filters
+               in
+               ( { model | filters = filters }
+               , cmd
+               )
+       in
+       checkForGameActions
+           >> refreshFilters
+-}
 
 
 view : (Msg -> msg) -> Model -> Html msg
@@ -347,92 +403,56 @@ gameListView model =
         loadProgress : Html Msg
         loadProgress =
             let
-                totalCount =
-                    model.games
-                        |> Dict.size
+                countTotal =
+                    RemoteSet.countTotal model.gameProgress
 
-                okCount =
-                    model.games
-                        |> Dict.filter (\key gameRes -> RemoteResult.isOk gameRes)
-                        |> Dict.size
+                progressPortion : ( String, String, Int ) -> Html msg
+                progressPortion ( label, color, count ) =
+                    let
+                        percentage =
+                            toFloat count * 100 / toFloat countTotal
+                    in
+                    H.div
+                        [ At.class ("progress-portion progress-portion-" ++ label)
+                        , At.style "display" "inline-block"
+                        , At.style "background" color
+                        , At.title label
+                        , At.style "width" (String.fromFloat percentage ++ "%")
+                        , At.style "overflow" "hidden"
+                        ]
+                        [ H.span [] [ H.text (String.fromInt count) ] ]
 
-                errCount =
-                    model.games
-                        |> Dict.filter (\key gameRes -> RemoteResult.isErr gameRes)
-                        |> Dict.size
-
-                okPercentage =
-                    okCount * 100 // totalCount
-
-                errPercentage =
-                    errCount * 100 // totalCount
+                stats =
+                    [ ( "succeeded", "#9f9", RemoteSet.countSucceeded model.gameProgress )
+                    , ( "failed", "#f99", RemoteSet.countFailed model.gameProgress )
+                    , ( "queued", "#9ff", RemoteSet.countQueued model.gameProgress )
+                    , ( "loading", "#999", RemoteSet.countLoading model.gameProgress )
+                    ]
             in
             H.div
                 [ At.class "load-progress progressbar"
                 , At.style "background" "#eee"
                 ]
-                [ H.div
-                    [ At.class "progress-portion progress-portion-failed"
-                    , At.style "display" "inline-block"
-                    , At.style "background" "#faa"
-                    , At.style "width" (String.fromInt errPercentage ++ "%")
-                    , At.style "overflow" "hidden"
-                    ]
-                    [ H.span [] [ H.text (String.fromInt errCount) ] ]
-                , H.div
-                    [ At.class "progress-portion progress-portion-ok"
-                    , At.style "display" "inline-block"
-                    , At.style "background" "#afa"
-                    , At.style "width" (String.fromInt okPercentage ++ "%")
-                    , At.style "overflow" "hidden"
-                    ]
-                    [ H.span [] [ H.text (String.fromInt okCount) ] ]
+                (List.map progressPortion stats)
+
+        matchingGameRow : Steam.GameDetails -> Html Msg
+        matchingGameRow game =
+            let
+                iconSrc =
+                    --game.icon
+                    "https://steamcdn-a.akamaihd.net/steam/apps/" ++ String.fromInt game.appId ++ "/capsule_sm_120.jpg"
+            in
+            H.tr [ At.class "game game-ok" ]
+                [ H.td [] [ H.text (String.fromInt game.appId) ]
+                , H.td [] [ H.img [ At.src iconSrc ] [] ]
+                , H.td [] [ H.text game.name ]
+                , H.td [] [ game.features |> String.join ", " |> H.text ]
+                , H.td [] [ game.genres |> String.join ", " |> H.text ]
                 ]
 
-        gameView : ( Steam.AppId, RemoteResult Http.Error Steam.AppId Steam.Game ) -> Html Msg
-        gameView ( appId, gameResult ) =
-            let
-                spanCols =
-                    4
-            in
-            case gameResult of
-                RemoteResult.Queued _ ->
-                    H.tr [ At.class "game game-queued" ]
-                        [ H.td [] [ H.text (String.fromInt appId) ]
-                        , H.td [ At.colspan spanCols ] [ H.text "Queued..." ]
-                        ]
-
-                RemoteResult.Loading _ ->
-                    H.tr [ At.class "game game-pending" ]
-                        [ H.td [] [ H.text (String.fromInt appId) ]
-                        , H.td [ At.colspan spanCols ] [ H.text "Loading..." ]
-                        ]
-
-                RemoteResult.Err _ ->
-                    H.tr [ At.class "game game-err" ]
-                        [ H.td [] [ H.text (String.fromInt appId) ]
-                        , H.td [ At.colspan spanCols ] [ H.text "Error :(" ]
-                        ]
-
-                RemoteResult.Ok game ->
-                    case Filters.match model.filters (Dict.values model.profiles) game of
-                        False ->
-                            H.text ""
-
-                        --  H.tr [ At.class "game game-hidden" ]
-                        --      [ H.td [] [ H.text (String.fromInt appId) ]
-                        --      , H.td [ At.colspan 2 ] [ H.text "(hidden)" ]
-                        --      , H.td [] [ game.features |> String.join ", " |> H.text ]
-                        --      , H.td [] [ game.genres |> String.join ", " |> H.text ]
-                        --      ]
-                        True ->
-                            H.tr [ At.class "game game-ok" ]
-                                [ H.td [] [ H.text (String.fromInt game.appId) ]
-                                , H.td [] [ H.img [ At.src game.icon ] [] ]
-                                , H.td [] [ H.text game.name ]
-                                , H.td [] [ game.features |> String.join ", " |> H.text ]
-                                , H.td [] [ game.genres |> String.join ", " |> H.text ]
-                                ]
+        matcher : Steam.GameDetails -> Bool
+        matcher =
+            Filters.match model.filters (Dict.values model.profiles)
     in
     H.div
         [ At.class "game-list" ]
@@ -440,8 +460,8 @@ gameListView model =
         , H.table
             [ At.class "game-table"
             ]
-            (model.games
-                |> Dict.toList
-                |> List.map gameView
+            (Dict.values model.gameDetails
+                |> List.filter matcher
+                |> List.map matchingGameRow
             )
         ]

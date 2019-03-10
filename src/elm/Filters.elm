@@ -46,7 +46,7 @@ anySelected filters =
         |> List.any ToggleSet.anySelected
 
 
-match : Filters -> List Steam.Profile -> Steam.Game -> Bool
+match : Filters -> List Steam.Profile -> Steam.GameDetails -> Bool
 match filters profiles game =
     let
         requireAll : List String -> Set String -> Bool
@@ -77,7 +77,7 @@ match filters profiles game =
 
 {-| Calculate new filters from souce data while keeping valid selections
 -}
-refresh : (Msg -> msg) -> List Steam.Profile -> List Steam.Game -> Filters -> Filters
+refresh : (Msg -> msg) -> List Steam.Profile -> List Steam.GameDetails -> Filters -> Filters
 refresh toMsg profiles games filters =
     { features = ToggleSet.setAvailablesGrouped (List.concatMap .features games) filters.features
     , genres = ToggleSet.setAvailablesGrouped (List.concatMap .genres games) filters.genres
