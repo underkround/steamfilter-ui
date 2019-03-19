@@ -28,7 +28,12 @@ import Steam
 type LoadState
     = Queued Int
     | Loading Int
-    | Failed Int Http.Error
+    | Failed Int Error
+
+
+type Error
+    = ErrorMaxRetries
+    | ErrorHttp Http.Error
 
 
 type alias GameSet =
@@ -38,17 +43,19 @@ type alias GameSet =
 
     -- settings
     , batchSize : Int
+    , maxRetries : Int
     }
 
 
-init : Int -> GameSet
-init batchSize =
+init : Int -> Int -> GameSet
+init batchSize maxRetries =
     { ok = Dict.empty
     , missing = Set.empty
     , pending = Dict.empty
 
     -- settings
     , batchSize = batchSize
+    , maxRetries = maxRetries
     }
 
 
@@ -126,14 +133,21 @@ requeueFailed gameSet =
     }
 
 
-requeueLoading : List Steam.AppId -> GameSet -> GameSet
-requeueLoading appIds gameSet =
+requeueLoading : Bool -> List Steam.AppId -> GameSet -> GameSet
+requeueLoading freezeCounter appIds gameSet =
     let
         requeue : LoadState -> LoadState
         requeue state =
             case state of
                 Loading n ->
-                    Queued n
+                    if freezeCounter then
+                        Queued n
+
+                    else if n > gameSet.maxRetries then
+                        Failed n ErrorMaxRetries
+
+                    else
+                        Queued (n + 1)
 
                 _ ->
                     state
@@ -144,6 +158,7 @@ requeueLoading appIds gameSet =
 
         appId :: xs ->
             requeueLoading
+                freezeCounter
                 xs
                 { gameSet
                     | pending = Dict.update appId (Maybe.map requeue) gameSet.pending
@@ -207,11 +222,11 @@ update toMsg msg gameSet =
             , Cmd.none
             )
 
-        ReceiveGames appIds (Ok gameResults) ->
+        ReceiveGames appIds (Ok result) ->
             let
                 importResults : List Steam.GameResult -> GameSet -> GameSet
-                importResults games gs =
-                    case games of
+                importResults gameResults gs =
+                    case gameResults of
                         [] ->
                             gs
 
@@ -223,10 +238,26 @@ update toMsg msg gameSet =
 
                         (Steam.GameRemoved appId) :: xs ->
                             importResults xs (miss appId gs)
+
+                -- If response contains "valid" responses, it means that
+                -- our batch is moving forward, and retry-counters can be
+                -- reset: the backend just didn't have time to process
+                -- everything yet.
+                isValidResult : Steam.GameResult -> Bool
+                isValidResult gameResult =
+                    case gameResult of
+                        Steam.GameFound _ ->
+                            True
+
+                        Steam.GameRemoved _ ->
+                            True
+
+                        _ ->
+                            False
             in
             gameSet
-                |> importResults gameResults
-                |> requeueLoading appIds
+                |> importResults result
+                |> requeueLoading (List.any isValidResult result) appIds
                 |> loadParallel toMsg
 
 
@@ -375,13 +406,13 @@ failWith err appIds gameSet =
                 failUpdater state =
                     case state of
                         Queued x ->
-                            Failed (x + 1) err
+                            Failed (x + 1) (ErrorHttp err)
 
                         Loading x ->
-                            Failed (x + 1) err
+                            Failed (x + 1) (ErrorHttp err)
 
                         Failed x _ ->
-                            Failed (x + 1) err
+                            Failed (x + 1) (ErrorHttp err)
             in
             failWith
                 err

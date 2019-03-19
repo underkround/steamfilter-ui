@@ -38,7 +38,7 @@ type alias Model =
 init : Model
 init =
     { profiles = Dict.empty
-    , gameSet = GameSet.init 30
+    , gameSet = GameSet.init 30 3
     , matching = []
     , query = ""
     , status = Nothing
