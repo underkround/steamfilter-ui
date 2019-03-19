@@ -91,9 +91,9 @@ type Msg
     | ToggleOwner Steam.SteamId64
 
 
-update : (Msg -> msg) -> Msg -> Filters -> Filters
+update : (Msg -> msg) -> Msg -> Filters -> ( Filters, Cmd msg )
 update toMsg msg filters =
-    case msg of
+    ( case msg of
         ToggleFeature feature ->
             { filters | features = ToggleSet.toggle feature filters.features }
 
@@ -102,6 +102,8 @@ update toMsg msg filters =
 
         ToggleOwner owner ->
             { filters | owners = ToggleSet.toggle owner filters.owners }
+    , Cmd.none
+    )
 
 
 view : Filters -> Html Msg
