@@ -80,7 +80,7 @@ view model =
         headerView =
             H.header
                 []
-                [ H.h1 [] [ H.text "Steam Filter" ]
+                [ H.h1 [] [ H.text "Steam Filter - WORK IN PROGRESS!" ]
                 ]
 
         footerView : Html msg
