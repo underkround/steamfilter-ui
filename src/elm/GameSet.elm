@@ -224,11 +224,10 @@ update toMsg msg gameSet =
                         (Steam.GameRemoved appId) :: xs ->
                             importResults xs (miss appId gs)
             in
-            ( gameSet
+            gameSet
                 |> importResults gameResults
                 |> requeueLoading appIds
-            , Cmd.none
-            )
+                |> loadParallel toMsg
 
 
 
