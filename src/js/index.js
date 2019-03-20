@@ -1,4 +1,4 @@
-import "../styles/index.scss";
+import "../scss/index.scss";
 import Elm from "../elm/Main";
 
 let flags = {
