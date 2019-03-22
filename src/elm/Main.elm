@@ -79,27 +79,44 @@ view model =
         headerView : Html msg
         headerView =
             H.header
-                []
-                [ H.h1 [] [ H.text "Steam Filter - WORK IN PROGRESS!" ]
+                [ At.class "navbar navbar-dark bg-dark justify-content-between"
+                ]
+                [ H.a
+                    [ At.class "navbar-brand"
+                    , At.href "https://steamfilter.net"
+                    ]
+                    [ H.text "Steam Filter" ]
+                , H.span [ At.class "navbar-text bg-danger rounded p-2" ]
+                    [ H.text "WORK IN PROGRESS!" ]
+                , H.ul [ At.class "navbar-nav" ]
+                    [ H.li [ At.class "nav-item" ]
+                        [ H.a
+                            [ At.class "nav-link"
+                            , At.href "https://github.com/underkround/steamfilter-ui"
+                            ]
+                            [ H.text "src" ]
+                        ]
+                    ]
                 ]
 
         footerView : Html msg
         footerView =
-            H.footer
-                []
+            H.footer []
                 [ H.text "Footer" ]
 
         contentPage : Html Msg
         contentPage =
-            case model.route of
-                Nothing ->
-                    H.text "404 lol"
+            H.div [ At.class "container-fluid" ]
+                [ case model.route of
+                    Nothing ->
+                        H.text "404 lol"
 
-                Just Route.About ->
-                    H.text "what"
+                    Just Route.About ->
+                        H.text "what"
 
-                Just Route.GameGrid ->
-                    GameGrid.view GameGridMsg model.gameGrid
+                    Just Route.GameGrid ->
+                        GameGrid.view GameGridMsg model.gameGrid
+                ]
     in
     { title = "Steam Filter"
     , body =
