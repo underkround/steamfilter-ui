@@ -50,7 +50,6 @@ init =
 
 type Msg
     = NoOp
-    | OnFocus (Result Browser.Dom.Error ())
     | OnInput String
     | OnKeyCodeDown Int
     | LoadProfile
@@ -65,12 +64,6 @@ update toMsg msg model =
     case msg of
         NoOp ->
             ( model, Cmd.none )
-
-        OnFocus (Ok x) ->
-            ( model, Debug.log "focus:ok" x |> always Cmd.none )
-
-        OnFocus (Err err) ->
-            ( model, Debug.log "focus:err" err |> always Cmd.none )
 
         OnInput query ->
             ( { model | query = query }
