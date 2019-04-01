@@ -136,7 +136,7 @@ update toMsg msg model =
                 | filters =
                     Filters.update subMsg model.filters
                         |> Filters.process
-                            (Dict.values model.profiles)
+                            model.profiles
                             (GameSet.getGames model.gameSet)
               }
             , Cmd.none
@@ -173,7 +173,7 @@ updateFilters toMsg ( model, cmd ) =
     ( { model
         | filters =
             Filters.process
-                (Dict.values model.profiles)
+                model.profiles
                 (GameSet.getGames model.gameSet)
                 model.filters
       }
@@ -191,7 +191,7 @@ view toMsg model =
         , profileManagerView model
         , H.h2 []
             [ H.text "2. Select filters" ]
-        , Filters.view FiltersMsg model.filters
+        , Filters.view FiltersMsg (Util.flip Dict.get model.profiles) model.filters
         , H.h2 []
             [ H.text "3. Find the games" ]
         , gameListView model
