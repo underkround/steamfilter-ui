@@ -6,6 +6,7 @@ module GameGrid exposing
     , view
     )
 
+import Browser.Dom
 import Dict exposing (Dict)
 import Filters exposing (Filters)
 import GameSet exposing (GameSet)
@@ -16,6 +17,7 @@ import Http
 import Lib.Util as Util
 import Set exposing (Set)
 import Steam
+import Task
 
 
 type Status
@@ -47,18 +49,29 @@ init =
 
 
 type Msg
-    = LoadProfile
-    | ReceiveProfile (Result Http.Error Steam.Profile)
-    | GameSetMsg GameSet.Msg
+    = NoOp
+    | OnFocus (Result Browser.Dom.Error ())
     | OnInput String
     | OnKeyCodeDown Int
+    | LoadProfile
+    | ReceiveProfile (Result Http.Error Steam.Profile)
     | RemoveProfile String
+    | GameSetMsg GameSet.Msg
     | FiltersMsg Filters.Msg
 
 
 update : (Msg -> msg) -> Msg -> Model -> ( Model, Cmd msg )
 update toMsg msg model =
     case msg of
+        NoOp ->
+            ( model, Cmd.none )
+
+        OnFocus (Ok x) ->
+            ( model, Debug.log "focus:ok" x |> always Cmd.none )
+
+        OnFocus (Err err) ->
+            ( model, Debug.log "focus:err" err |> always Cmd.none )
+
         OnInput query ->
             ( { model | query = query }
             , Cmd.none
@@ -103,6 +116,7 @@ update toMsg msg model =
             )
                 |> updateGamesFromProfiles toMsg
                 |> updateGameLoading toMsg
+                |> updateFilters toMsg
 
         ReceiveProfile (Result.Err err) ->
             ( { model | status = Just <| HttpError err }
@@ -114,6 +128,7 @@ update toMsg msg model =
             , Cmd.none
             )
                 |> updateGamesFromProfiles toMsg
+                |> updateFilters toMsg
 
         --
         -- SUBMESSAGES
@@ -121,10 +136,18 @@ update toMsg msg model =
         GameSetMsg subMsg ->
             GameSet.update (GameSetMsg >> toMsg) subMsg model.gameSet
                 |> Tuple.mapFirst (\sub -> { model | gameSet = sub })
+                |> updateFilters toMsg
 
         FiltersMsg subMsg ->
-            Filters.update (FiltersMsg >> toMsg) subMsg model.filters
-                |> Tuple.mapFirst (\sub -> { model | filters = sub })
+            ( { model
+                | filters =
+                    Filters.update subMsg model.filters
+                        |> Filters.process
+                            (Dict.values model.profiles)
+                            (GameSet.getGames model.gameSet)
+              }
+            , Cmd.none
+            )
 
 
 updateGamesFromProfiles : (Msg -> msg) -> ( Model, Cmd msg ) -> ( Model, Cmd msg )
@@ -152,6 +175,19 @@ updateGameLoading toMsg ( model, cmd ) =
         |> Tuple.mapSecond (\sub -> Cmd.batch [ cmd, sub ])
 
 
+updateFilters : (Msg -> msg) -> ( Model, Cmd msg ) -> ( Model, Cmd msg )
+updateFilters toMsg ( model, cmd ) =
+    ( { model
+        | filters =
+            Filters.process
+                (Dict.values model.profiles)
+                (GameSet.getGames model.gameSet)
+                model.filters
+      }
+    , cmd
+    )
+
+
 view : (Msg -> msg) -> Model -> Html msg
 view toMsg model =
     H.div
@@ -162,7 +198,7 @@ view toMsg model =
         , profileManagerView model
         , H.h2 []
             [ H.text "2. Select filters" ]
-        , Filters.view model.filters |> H.map FiltersMsg
+        , Filters.view FiltersMsg model.filters
         , H.h2 []
             [ H.text "3. Find the games" ]
         , gameListView model
@@ -176,7 +212,9 @@ profileManagerView model =
         inputView : Maybe Status -> Html Msg
         inputView status =
             H.div
-                [ At.class "profile-input" ]
+                [ At.class "profile-input"
+                , At.id "profile-input"
+                ]
                 [ H.input
                     [ Ev.onInput OnInput
                     , At.value model.query
@@ -283,14 +321,18 @@ gameListView model =
                     , ( "loading", "#999", stats.loading )
                     ]
             in
-            H.div
-                [ At.class "load-progress progressbar"
-                , At.style "background" "#eee"
-                ]
-                (List.map progressPortion statsList)
+            if GameSet.isEmpty model.gameSet then
+                H.text ""
 
-        matchingGameRow : Steam.GameDetails -> Html Msg
-        matchingGameRow game =
+            else
+                H.div
+                    [ At.class "load-progress progressbar"
+                    , At.style "background" "#eee"
+                    ]
+                    (List.map progressPortion statsList)
+
+        gameRow : Steam.GameDetails -> Html Msg
+        gameRow game =
             let
                 iconSrc =
                     --game.icon
@@ -304,9 +346,13 @@ gameListView model =
                 , H.td [] [ game.genres |> String.join ", " |> H.text ]
                 ]
 
-        matcher : Steam.GameDetails -> Bool
-        matcher =
-            Filters.match model.filters (Dict.values model.profiles)
+        gamesToView : List Steam.GameDetails
+        gamesToView =
+            if Filters.anySelected model.filters then
+                Filters.getGames model.filters
+
+            else
+                GameSet.getGames model.gameSet
     in
     H.div
         [ At.class "game-list" ]
@@ -314,8 +360,5 @@ gameListView model =
         , H.table
             [ At.class "game-table"
             ]
-            (GameSet.getGames model.gameSet
-                |> List.filter matcher
-                |> List.map matchingGameRow
-            )
+            (List.map gameRow gamesToView)
         ]

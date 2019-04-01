@@ -9,6 +9,7 @@ module GameSet exposing
     , hasOk
     , hasQueued
     , init
+    , isEmpty
     , loadParallel
     , queue
     , queueAndWhitelist
@@ -57,6 +58,13 @@ init batchSize maxRetries =
     , batchSize = batchSize
     , maxRetries = maxRetries
     }
+
+
+isEmpty : GameSet -> Bool
+isEmpty gs =
+    Dict.isEmpty gs.ok
+        && Set.isEmpty gs.missing
+        && Dict.isEmpty gs.pending
 
 
 
@@ -307,8 +315,8 @@ stats gameSet =
     Dict.foldr mapper partialStats gameSet.pending
 
 
-getGame : Steam.AppId -> GameSet -> Maybe Steam.GameDetails
-getGame appId gameSet =
+getGame : GameSet -> Steam.AppId -> Maybe Steam.GameDetails
+getGame gameSet appId =
     Dict.get appId gameSet.ok
 
 

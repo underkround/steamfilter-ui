@@ -48,7 +48,7 @@ setAvailablesGrouped availablesList oldSet =
         fromGrouped ( key, grouped ) =
             ( key
             , { selected = isSelected key oldSet
-              , weight = List.length grouped
+              , weight = List.length grouped + 1
               }
             )
     in

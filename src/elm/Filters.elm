@@ -2,9 +2,9 @@ module Filters exposing
     ( Filters
     , Msg
     , anySelected
+    , getGames
     , init
-    , match
-    , refresh
+    , process
     , update
     , view
     )
@@ -24,6 +24,9 @@ type alias Filters =
     { features : ToggleSet String
     , genres : ToggleSet String
     , owners : ToggleSet String
+
+    -- Store matching games for optimization
+    , matching : List Steam.GameDetails
     }
 
 
@@ -32,6 +35,7 @@ init =
     { features = ToggleSet.empty
     , genres = ToggleSet.empty
     , owners = ToggleSet.empty
+    , matching = []
     }
 
 
@@ -44,6 +48,11 @@ anySelected filters =
     , filters.owners
     ]
         |> List.any ToggleSet.anySelected
+
+
+getGames : Filters -> List Steam.GameDetails
+getGames =
+    .matching
 
 
 match : Filters -> List Steam.Profile -> Steam.GameDetails -> Bool
@@ -77,11 +86,20 @@ match filters profiles game =
 
 {-| Calculate new filters from souce data while keeping valid selections
 -}
-refresh : (Msg -> msg) -> List Steam.Profile -> List Steam.GameDetails -> Filters -> Filters
-refresh toMsg profiles games filters =
-    { features = ToggleSet.setAvailablesGrouped (List.concatMap .features games) filters.features
-    , genres = ToggleSet.setAvailablesGrouped (List.concatMap .genres games) filters.genres
-    , owners = ToggleSet.setAvailablesGrouped (List.map .steamId profiles) filters.owners
+process : List Steam.Profile -> List Steam.GameDetails -> Filters -> Filters
+process profiles games filters =
+    let
+        matchingGames : List Steam.GameDetails
+        matchingGames =
+            List.filter (match filters profiles) games
+    in
+    { features = ToggleSet.setAvailablesGrouped (List.concatMap .features matchingGames) filters.features
+    , genres = ToggleSet.setAvailablesGrouped (List.concatMap .genres matchingGames) filters.genres
+
+    --, owners = ToggleSet.setAvailablesGrouped (List.map .steamId profiles) filters.owners
+    -- @TODO: update owners totals
+    , owners = filters.owners
+    , matching = matchingGames
     }
 
 
@@ -91,9 +109,9 @@ type Msg
     | ToggleOwner Steam.SteamId64
 
 
-update : (Msg -> msg) -> Msg -> Filters -> ( Filters, Cmd msg )
-update toMsg msg filters =
-    ( case msg of
+update : Msg -> Filters -> Filters
+update msg filters =
+    case msg of
         ToggleFeature feature ->
             { filters | features = ToggleSet.toggle feature filters.features }
 
@@ -102,15 +120,13 @@ update toMsg msg filters =
 
         ToggleOwner owner ->
             { filters | owners = ToggleSet.toggle owner filters.owners }
-    , Cmd.none
-    )
 
 
-view : Filters -> Html Msg
-view filters =
+view : (Msg -> msg) -> Filters -> Html msg
+view toMsg filters =
     let
-        toggle : (String -> Msg) -> ( String, Bool, Int ) -> Html Msg
-        toggle msg ( value, selected, weight ) =
+        toggleView : (String -> Msg) -> ( String, Bool, Int ) -> Html Msg
+        toggleView msg ( value, selected, weight ) =
             H.button
                 [ At.classList
                     [ ( "toggle", True )
@@ -129,13 +145,14 @@ view filters =
         [ H.h3 [] [ H.text "Owners" ]
         , H.div
             [ At.class "filter-set" ]
-            (ToggleSet.mapToList (toggle ToggleOwner) filters.owners)
+            (ToggleSet.mapToList (toggleView ToggleOwner) filters.owners)
         , H.h3 [] [ H.text "Features" ]
         , H.div
             [ At.class "filter-set" ]
-            (ToggleSet.mapToList (toggle ToggleFeature) filters.features)
+            (ToggleSet.mapToList (toggleView ToggleFeature) filters.features)
         , H.h3 [] [ H.text "Genres" ]
         , H.div
             [ At.class "filter-set" ]
-            (ToggleSet.mapToList (toggle ToggleGenre) filters.genres)
+            (ToggleSet.mapToList (toggleView ToggleGenre) filters.genres)
         ]
+        |> H.map toMsg
