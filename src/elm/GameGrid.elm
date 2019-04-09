@@ -183,16 +183,32 @@ updateFilters toMsg ( model, cmd ) =
 
 view : (Msg -> msg) -> Model -> Html msg
 view toMsg model =
+    let
+        noProfiles =
+            Dict.isEmpty model.profiles
+    in
     H.div
         [ At.class "content game-grid"
         ]
         [ H.h2 []
             [ H.text "1. Add profiles" ]
         , profileManagerView model
-        , H.h2 []
+        , H.h2
+            [ At.classList
+                [ ( "disabled", noProfiles )
+                ]
+            ]
             [ H.text "2. Select filters" ]
-        , Filters.view FiltersMsg (Util.flip Dict.get model.profiles) model.filters
-        , H.h2 []
+        , if noProfiles then
+            H.text ""
+
+          else
+            Filters.view FiltersMsg (Util.flip Dict.get model.profiles) model.filters
+        , H.h2
+            [ At.classList
+                [ ( "disabled", noProfiles )
+                ]
+            ]
             [ H.text "3. Find the games" ]
         , gameListView model
         ]

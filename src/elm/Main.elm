@@ -94,7 +94,8 @@ view model =
                             [ At.class "nav-link"
                             , At.href "https://github.com/underkround/steamfilter-ui"
                             ]
-                            [ H.text "src" ]
+                            [ H.code [] [ H.text "src" ]
+                            ]
                         ]
                     ]
                 ]
