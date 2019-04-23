@@ -1,41 +1,36 @@
 module Route exposing
     ( Route(..)
     , fromUrl
-    , toString
+    , href
     )
 
 import GameGrid
 import Html as H
 import Html.Attributes as At
+import Steam.Game
+import Steam.Profile
 import Url exposing (Url)
 import Url.Parser as Parser exposing ((</>), Parser, s)
 
 
 type Route
-    = GameGrid
+    = Top
+    | Filter (List String)
     | About
 
 
 parser : Parser (Route -> a) a
 parser =
     Parser.oneOf
-        [ Parser.map GameGrid Parser.top
+        [ Parser.map Top Parser.top
+        , Parser.map Filter (s "filter" </> Steam.Profile.urlParser)
         , Parser.map About (s "about")
         ]
 
 
-toString : Route -> String
-toString page =
-    case page of
-        GameGrid ->
-            ""
-
-        About ->
-            "#/about"
-
-
-
--- "show" :: Profile.toUrl profiles
+href : Route -> H.Attribute msg
+href target =
+    At.href (toUrlString target)
 
 
 fromUrl : Url -> Maybe Route
@@ -46,6 +41,18 @@ fromUrl url =
         |> Parser.parse parser
 
 
-href : Route -> H.Attribute msg
-href target =
-    At.href (toString target)
+toUrlString : Route -> String
+toUrlString page =
+    let
+        parts =
+            case page of
+                Top ->
+                    []
+
+                Filter profiles ->
+                    [ "filter" ++ Steam.Profile.toUrlString profiles ]
+
+                About ->
+                    [ "about" ]
+    in
+    "#/" ++ String.join "/" parts

@@ -23,7 +23,8 @@ import Dict.Extra
 import Http
 import List.Extra
 import Set exposing (Set)
-import Steam
+import Steam.Game
+import Steam.Profile
 
 
 type LoadState
@@ -38,9 +39,9 @@ type Error
 
 
 type alias GameSet =
-    { ok : Dict Steam.AppId Steam.GameDetails
-    , missing : Set Steam.AppId
-    , pending : Dict Steam.AppId LoadState
+    { ok : Dict Steam.Game.AppId Steam.Game.Game
+    , missing : Set Steam.Game.AppId
+    , pending : Dict Steam.Game.AppId LoadState
 
     -- settings
     , batchSize : Int
@@ -75,7 +76,7 @@ isEmpty gs =
 
 {-| Queue new games
 -}
-queue : List Steam.AppId -> GameSet -> GameSet
+queue : List Steam.Game.AppId -> GameSet -> GameSet
 queue appIds gameSet =
     case appIds of
         [] ->
@@ -98,7 +99,7 @@ queue appIds gameSet =
 
 {-| Remove games not whitelisted, queue those that are new
 -}
-queueAndWhitelist : List Steam.AppId -> GameSet -> GameSet
+queueAndWhitelist : List Steam.Game.AppId -> GameSet -> GameSet
 queueAndWhitelist appIds gameSet =
     let
         appIdSet =
@@ -141,7 +142,7 @@ requeueFailed gameSet =
     }
 
 
-requeueLoading : Bool -> List Steam.AppId -> GameSet -> GameSet
+requeueLoading : Bool -> List Steam.Game.AppId -> GameSet -> GameSet
 requeueLoading freezeCounter appIds gameSet =
     let
         requeue : LoadState -> LoadState
@@ -177,10 +178,10 @@ loadParallel : (Msg -> msg) -> GameSet -> ( GameSet, Cmd msg )
 loadParallel toMsg gameSet =
     let
         pullQueued :
-            Steam.AppId
+            Steam.Game.AppId
             -> LoadState
-            -> ( List Steam.AppId, Dict Steam.AppId LoadState )
-            -> ( List Steam.AppId, Dict Steam.AppId LoadState )
+            -> ( List Steam.Game.AppId, Dict Steam.Game.AppId LoadState )
+            -> ( List Steam.Game.AppId, Dict Steam.Game.AppId LoadState )
         pullQueued appId state ( toLoad, pending ) =
             case state of
                 Queued x ->
@@ -203,9 +204,9 @@ loadParallel toMsg gameSet =
 
         _ ->
             let
-                load : List Steam.AppId -> Cmd msg
+                load : List Steam.Game.AppId -> Cmd msg
                 load appIds =
-                    Steam.loadGames appIds (ReceiveGames appIds)
+                    Steam.Game.load appIds (ReceiveGames appIds)
                         |> Cmd.map toMsg
             in
             ( { gameSet
@@ -219,7 +220,7 @@ loadParallel toMsg gameSet =
 
 
 type Msg
-    = ReceiveGames (List Steam.AppId) (Result Http.Error (List Steam.GameResult))
+    = ReceiveGames (List Steam.Game.AppId) (Result Http.Error (List Steam.Game.GameResult))
 
 
 update : (Msg -> msg) -> Msg -> GameSet -> ( GameSet, Cmd msg )
@@ -232,32 +233,32 @@ update toMsg msg gameSet =
 
         ReceiveGames appIds (Ok result) ->
             let
-                importResults : List Steam.GameResult -> GameSet -> GameSet
+                importResults : List Steam.Game.GameResult -> GameSet -> GameSet
                 importResults gameResults gs =
                     case gameResults of
                         [] ->
                             gs
 
-                        Steam.GameParseError :: xs ->
+                        Steam.Game.GameParseError :: xs ->
                             importResults xs gs
 
-                        (Steam.GameFound game) :: xs ->
+                        (Steam.Game.GameFound game) :: xs ->
                             importResults xs (succeed game gs)
 
-                        (Steam.GameRemoved appId) :: xs ->
+                        (Steam.Game.GameRemoved appId) :: xs ->
                             importResults xs (miss appId gs)
 
                 -- If response contains "valid" responses, it means that
                 -- our batch is moving forward, and retry-counters can be
                 -- reset: the backend just didn't have time to process
                 -- everything yet.
-                isValidResult : Steam.GameResult -> Bool
+                isValidResult : Steam.Game.GameResult -> Bool
                 isValidResult gameResult =
                     case gameResult of
-                        Steam.GameFound _ ->
+                        Steam.Game.GameFound _ ->
                             True
 
-                        Steam.GameRemoved _ ->
+                        Steam.Game.GameRemoved _ ->
                             True
 
                         _ ->
@@ -300,7 +301,7 @@ stats gameSet =
             , failed = 0
             }
 
-        mapper : Steam.AppId -> LoadState -> Stats -> Stats
+        mapper : Steam.Game.AppId -> LoadState -> Stats -> Stats
         mapper _ state stat =
             case state of
                 Queued _ ->
@@ -315,12 +316,12 @@ stats gameSet =
     Dict.foldr mapper partialStats gameSet.pending
 
 
-getGame : GameSet -> Steam.AppId -> Maybe Steam.GameDetails
+getGame : GameSet -> Steam.Game.AppId -> Maybe Steam.Game.Game
 getGame gameSet appId =
     Dict.get appId gameSet.ok
 
 
-getGames : GameSet -> List Steam.GameDetails
+getGames : GameSet -> List Steam.Game.Game
 getGames =
     .ok >> Dict.values
 
@@ -379,7 +380,7 @@ isFailed state =
             False
 
 
-succeed : Steam.GameDetails -> GameSet -> GameSet
+succeed : Steam.Game.Game -> GameSet -> GameSet
 succeed game gameSet =
     { gameSet
         | ok = Dict.insert game.appId game gameSet.ok
@@ -388,7 +389,7 @@ succeed game gameSet =
     }
 
 
-miss : Steam.AppId -> GameSet -> GameSet
+miss : Steam.Game.AppId -> GameSet -> GameSet
 miss appId gameSet =
     { gameSet
         | ok = Dict.remove appId gameSet.ok
@@ -397,7 +398,7 @@ miss appId gameSet =
     }
 
 
-failWith : Http.Error -> List Steam.AppId -> GameSet -> GameSet
+failWith : Http.Error -> List Steam.Game.AppId -> GameSet -> GameSet
 failWith err appIds gameSet =
     let
         countBumper : Maybe Int -> Maybe Int

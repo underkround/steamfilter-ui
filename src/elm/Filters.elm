@@ -19,16 +19,17 @@ import List.Extra
 import Maybe.Extra
 import Set exposing (Set)
 import Set.Extra
-import Steam
+import Steam.Game
+import Steam.Profile
 
 
 type alias Filters =
     { features : ToggleSet String
     , genres : ToggleSet String
-    , owners : ToggleSet Steam.SteamId64
+    , owners : ToggleSet Steam.Profile.SteamId64
 
     -- Store matching games for optimization
-    , matching : List Steam.GameDetails
+    , matching : List Steam.Game.Game
     }
 
 
@@ -52,12 +53,12 @@ anySelected filters =
         |> List.any ToggleSet.anySelected
 
 
-getGames : Filters -> List Steam.GameDetails
+getGames : Filters -> List Steam.Game.Game
 getGames =
     .matching
 
 
-match : Filters -> List (Set Steam.AppId) -> Steam.GameDetails -> Bool
+match : Filters -> List (Set Steam.Game.AppId) -> Steam.Game.Game -> Bool
 match filters selectedProfileGames game =
     let
         requireAll : List String -> Set String -> Bool
@@ -73,7 +74,7 @@ match filters selectedProfileGames game =
                     else
                         False
 
-        memberOfAll : List (Set Steam.AppId) -> Steam.AppId -> Bool
+        memberOfAll : List (Set Steam.Game.AppId) -> Steam.Game.AppId -> Bool
         memberOfAll sets appId =
             case sets of
                 [] ->
@@ -101,26 +102,26 @@ match filters selectedProfileGames game =
 
 {-| Calculate new filters from souce data while keeping valid selections
 -}
-process : Dict Steam.SteamId64 Steam.Profile -> List Steam.GameDetails -> Filters -> Filters
+process : Dict Steam.Profile.SteamId64 Steam.Profile.Profile -> List Steam.Game.Game -> Filters -> Filters
 process profiles games filters =
     let
-        selectedProfileGames : List (Set Steam.AppId)
+        selectedProfileGames : List (Set Steam.Game.AppId)
         selectedProfileGames =
             ToggleSet.getSelected filters.owners
                 |> List.map (Util.flip Dict.get profiles)
                 |> Maybe.Extra.values
                 |> List.map (.games >> Dict.keys >> Set.fromList)
 
-        matchingGames : List Steam.GameDetails
+        matchingGames : List Steam.Game.Game
         matchingGames =
             List.filter (match filters selectedProfileGames) games
 
-        matchingGameIds : Set Steam.AppId
+        matchingGameIds : Set Steam.Game.AppId
         matchingGameIds =
             List.map .appId matchingGames
                 |> Set.fromList
 
-        profileAndWeight : Steam.Profile -> ( Steam.SteamId64, Int )
+        profileAndWeight : Steam.Profile.Profile -> ( Steam.Profile.SteamId64, Int )
         profileAndWeight profile =
             ( profile.steamId64
             , profile.games
@@ -149,7 +150,7 @@ process profiles games filters =
 type Msg
     = ToggleFeature String
     | ToggleGenre String
-    | ToggleOwner Steam.SteamId64
+    | ToggleOwner Steam.Profile.SteamId64
 
 
 update : Msg -> Filters -> Filters
@@ -165,7 +166,7 @@ update msg filters =
             { filters | owners = ToggleSet.toggle owner filters.owners }
 
 
-view : (Msg -> msg) -> (Steam.SteamId64 -> Maybe Steam.Profile) -> Filters -> Html msg
+view : (Msg -> msg) -> (Steam.Profile.SteamId64 -> Maybe Steam.Profile.Profile) -> Filters -> Html msg
 view toMsg getProfile filters =
     let
         toggleView : (a -> Html Msg) -> (a -> Msg) -> ( a, Bool, Int ) -> Html Msg
@@ -183,7 +184,7 @@ view toMsg getProfile filters =
                     [ H.text <| " (" ++ String.fromInt weight ++ ")" ]
                 ]
 
-        profileView : Steam.SteamId64 -> Html Msg
+        profileView : Steam.Profile.SteamId64 -> Html Msg
         profileView =
             getProfile
                 >> Maybe.map .steamId

@@ -16,7 +16,8 @@ import Html.Events as Ev
 import Http
 import Lib.Util as Util
 import Set exposing (Set)
-import Steam
+import Steam.Game
+import Steam.Profile
 import Task
 
 
@@ -28,9 +29,9 @@ type Status
 
 
 type alias Model =
-    { profiles : Dict Steam.SteamId64 Steam.Profile
+    { profiles : Dict Steam.Profile.SteamId64 Steam.Profile.Profile
     , gameSet : GameSet
-    , matching : List Steam.GameDetails
+    , matching : List Steam.Game.Game
     , query : String
     , status : Maybe Status
     , filters : Filters
@@ -53,7 +54,7 @@ type Msg
     | OnInput String
     | OnKeyCodeDown Int
     | LoadProfile
-    | ReceiveProfile (Result Http.Error Steam.Profile)
+    | ReceiveProfile (Result Http.Error Steam.Profile.Profile)
     | RemoveProfile String
     | GameSetMsg GameSet.Msg
     | FiltersMsg Filters.Msg
@@ -83,7 +84,7 @@ update toMsg msg model =
         --
         LoadProfile ->
             ( { model | status = Just ProfilePending }
-            , Steam.loadProfile model.query ReceiveProfile
+            , Steam.Profile.load model.query ReceiveProfile
                 |> Cmd.map toMsg
             )
 
@@ -146,7 +147,7 @@ update toMsg msg model =
 updateGamesFromProfiles : (Msg -> msg) -> ( Model, Cmd msg ) -> ( Model, Cmd msg )
 updateGamesFromProfiles toMsg ( model, cmd ) =
     let
-        allGameIds : List Steam.AppId
+        allGameIds : List Steam.Game.AppId
         allGameIds =
             model.profiles
                 |> Dict.values
@@ -262,11 +263,11 @@ profileManagerView model =
                 Nothing ->
                     H.text ""
 
-        profileListView : List Steam.Profile -> Html Msg
+        profileListView : List Steam.Profile.Profile -> Html Msg
         profileListView =
             List.map profileView >> H.div []
 
-        profileView : Steam.Profile -> Html Msg
+        profileView : Steam.Profile.Profile -> Html Msg
         profileView profile =
             H.div
                 [ At.class "profile" ]
@@ -340,7 +341,7 @@ gameListView model =
                     ]
                     (List.map progressPortion statsList)
 
-        gameRow : Steam.GameDetails -> Html Msg
+        gameRow : Steam.Game.Game -> Html Msg
         gameRow game =
             let
                 iconSrc =
@@ -355,7 +356,7 @@ gameListView model =
                 , H.td [] [ game.genres |> String.join ", " |> H.text ]
                 ]
 
-        gamesToView : List Steam.GameDetails
+        gamesToView : List Steam.Game.Game
         gamesToView =
             if Filters.anySelected model.filters then
                 Filters.getGames model.filters

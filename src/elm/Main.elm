@@ -115,7 +115,10 @@ view model =
                     Just Route.About ->
                         H.text "what"
 
-                    Just Route.GameGrid ->
+                    Just Route.Top ->
+                        GameGrid.view GameGridMsg model.gameGrid
+
+                    Just (Route.Filter profiles) ->
                         GameGrid.view GameGridMsg model.gameGrid
                 ]
     in
